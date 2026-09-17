@@ -1,0 +1,871 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Dashboard | Nguyên Hoàng</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f5f7fb;
+            color: #172033;
+        }
+
+        a {
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .header {
+            background: white;
+            border-bottom: 1px solid #e5e7eb;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .nav {
+            width: 90%;
+            max-width: 1100px;
+            margin: auto;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-size: 23px;
+            font-weight: 700;
+        }
+
+        .logo span {
+            color: #2864e8;
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .back-link {
+            color: #475569;
+            font-size: 14px;
+        }
+
+        .logout-btn {
+            border: none;
+            background: #2864e8;
+            color: white;
+            padding: 10px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1100px;
+            margin: 35px auto 60px;
+        }
+
+        .welcome {
+            margin-bottom: 25px;
+        }
+
+        .welcome h1 {
+            margin: 0 0 8px;
+            font-size: 30px;
+        }
+
+        .welcome p {
+            margin: 0;
+            color: #64748b;
+        }
+
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 18px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 14px;
+            padding: 22px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .card-title {
+            color: #64748b;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .card-value {
+            font-size: 25px;
+            font-weight: 700;
+        }
+
+        .income {
+            color: #159957;
+        }
+
+        .expense {
+            color: #dc3545;
+        }
+
+        .balance {
+            color: #2864e8;
+        }
+
+        .section {
+            background: white;
+            border-radius: 14px;
+            border: 1px solid #e5e7eb;
+            padding: 25px;
+            margin-bottom: 25px;
+        }
+
+        .section h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 21px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group.full {
+            grid-column: 1 / -1;
+        }
+
+        label {
+            margin-bottom: 7px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        input,
+        select {
+            padding: 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 15px;
+            background: white;
+        }
+
+        input:focus,
+        select:focus {
+            outline: none;
+            border-color: #2864e8;
+        }
+
+        .add-btn {
+            margin-top: 18px;
+            padding: 12px 22px;
+            border: none;
+            border-radius: 8px;
+            background: #2864e8;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .add-btn:hover {
+            opacity: 0.9;
+        }
+
+        .message {
+            margin-top: 15px;
+            font-size: 14px;
+        }
+
+        .transaction-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .transaction {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+        }
+
+        .transaction-left {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .transaction-desc {
+            font-weight: 600;
+        }
+
+        .transaction-date {
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        .transaction-amount {
+            font-weight: 700;
+        }
+
+        .empty {
+            color: #64748b;
+            padding: 15px 0;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: #64748b;
+        }
+
+        @media (max-width: 800px) {
+            .cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .nav-right {
+                gap: 10px;
+            }
+        }
+
+        @media (max-width: 550px) {
+            .cards {
+                grid-template-columns: 1fr;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .form-group.full {
+                grid-column: auto;
+            }
+
+            .back-link {
+                display: none;
+            }
+
+            .welcome h1 {
+                font-size: 25px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<header class="header">
+    <div class="nav">
+
+        <div class="logo">
+            Nguyên <span>HOÀNG</span>
+        </div>
+
+        <div class="nav-right">
+            <a class="back-link" href="index.html">
+                ← Về website
+            </a>
+
+            <button class="logout-btn" id="logoutBtn">
+                Đăng xuất
+            </button>
+        </div>
+
+    </div>
+</header>
+
+
+<main class="container">
+
+    <div id="loading" class="loading">
+        Đang kiểm tra tài khoản...
+    </div>
+
+
+    <div id="dashboard" style="display:none;">
+
+        <div class="welcome">
+            <h1>Xin chào, <span id="userName">bạn</span> 👋</h1>
+            <p>Đây là khu vực tài chính cá nhân của bạn.</p>
+        </div>
+
+
+        <!-- TỔNG QUAN -->
+        <div class="cards">
+
+            <div class="card">
+                <div class="card-title">
+                    Tổng thu nhập
+                </div>
+
+                <div class="card-value income" id="totalIncome">
+                    0 đ
+                </div>
+            </div>
+
+
+            <div class="card">
+                <div class="card-title">
+                    Tổng chi tiêu
+                </div>
+
+                <div class="card-value expense" id="totalExpense">
+                    0 đ
+                </div>
+            </div>
+
+
+            <div class="card">
+                <div class="card-title">
+                    Chênh lệch
+                </div>
+
+                <div class="card-value balance" id="totalBalance">
+                    0 đ
+                </div>
+            </div>
+
+
+            <div class="card">
+                <div class="card-title">
+                    Số giao dịch
+                </div>
+
+                <div class="card-value" id="transactionCount">
+                    0
+                </div>
+            </div>
+
+        </div>
+
+
+        <!-- THÊM GIAO DỊCH -->
+        <div class="section">
+
+            <h2>Thêm giao dịch</h2>
+
+            <form id="transactionForm">
+
+                <div class="form-grid">
+
+                    <div class="form-group">
+
+                        <label for="transactionType">
+                            Loại giao dịch
+                        </label>
+
+                        <select id="transactionType" required>
+
+                            <option value="expense">
+                                Chi tiêu
+                            </option>
+
+                            <option value="income">
+                                Thu nhập
+                            </option>
+
+                        </select>
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label for="transactionDate">
+                            Ngày
+                        </label>
+
+                        <input
+                            type="date"
+                            id="transactionDate"
+                            required
+                        >
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label for="category">
+                            Danh mục
+                        </label>
+
+                        <input
+                            type="text"
+                            id="category"
+                            placeholder="Ví dụ: Ăn uống"
+                            required
+                        >
+
+                    </div>
+
+
+                    <div class="form-group">
+
+                        <label for="amount">
+                            Số tiền (VNĐ)
+                        </label>
+
+                        <input
+                            type="number"
+                            id="amount"
+                            placeholder="Ví dụ: 500000"
+                            min="1"
+                            required
+                        >
+
+                    </div>
+
+
+                    <div class="form-group full">
+
+                        <label for="description">
+                            Nội dung
+                        </label>
+
+                        <input
+                            type="text"
+                            id="description"
+                            placeholder="Ví dụ: Ăn trưa"
+                        >
+
+                    </div>
+
+                </div>
+
+
+                <button class="add-btn" type="submit">
+                    + Thêm giao dịch
+                </button>
+
+                <div class="message" id="formMessage"></div>
+
+            </form>
+
+        </div>
+
+
+        <!-- DANH SÁCH GIAO DỊCH -->
+        <div class="section">
+
+            <h2>Giao dịch gần đây</h2>
+
+            <div id="transactionList" class="transaction-list">
+                <div class="empty">
+                    Chưa có giao dịch nào.
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+</main>
+
+
+<script>
+
+const SUPABASE_URL =
+    "https://mxjcpnmquxjkrfrchivg.supabase.co";
+
+const SUPABASE_PUBLISHABLE_KEY =
+    "sb_publishable_7G5dDDvbtaxFpcuA1N_VMA_j_N4NIVk";
+
+
+const supabaseClient =
+    window.supabase.createClient(
+        SUPABASE_URL,
+        SUPABASE_PUBLISHABLE_KEY
+    );
+
+
+
+function formatMoney(amount) {
+
+    return new Intl.NumberFormat(
+        "vi-VN"
+    ).format(amount) + " đ";
+
+}
+
+
+
+async function loadDashboard() {
+
+    const {
+        data: {
+            session
+        }
+    } = await supabaseClient.auth.getSession();
+
+
+    if (!session) {
+
+        window.location.href = "index.html";
+
+        return;
+    }
+
+
+    document.getElementById("loading").style.display = "none";
+
+    document.getElementById("dashboard").style.display = "block";
+
+
+    const user =
+        session.user;
+
+
+    const name =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        user.email ||
+        "bạn";
+
+
+    document.getElementById("userName").textContent =
+        name;
+
+
+    document.getElementById("transactionDate").value =
+        new Date().toISOString().split("T")[0];
+
+
+    await loadTransactions();
+
+}
+
+
+
+async function loadTransactions() {
+
+    const {
+        data,
+        error
+    } = await supabaseClient
+        .from("transactions")
+        .select("*")
+        .order("transaction_date", {
+            ascending: false
+        });
+
+
+    if (error) {
+
+        console.error(error);
+
+        document.getElementById("transactionList").innerHTML =
+            "<div class='empty'>Không thể tải dữ liệu.</div>";
+
+        return;
+    }
+
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+
+
+    data.forEach(transaction => {
+
+        const amount =
+            Number(transaction.amount);
+
+
+        if (transaction.type === "income") {
+
+            totalIncome += amount;
+
+        }
+
+
+        if (transaction.type === "expense") {
+
+            totalExpense += amount;
+
+        }
+
+    });
+
+
+    const balance =
+        totalIncome - totalExpense;
+
+
+    document.getElementById("totalIncome").textContent =
+        formatMoney(totalIncome);
+
+
+    document.getElementById("totalExpense").textContent =
+        formatMoney(totalExpense);
+
+
+    document.getElementById("totalBalance").textContent =
+        formatMoney(balance);
+
+
+    document.getElementById("transactionCount").textContent =
+        data.length;
+
+
+    renderTransactions(data);
+
+}
+
+
+
+function renderTransactions(data) {
+
+    const list =
+        document.getElementById("transactionList");
+
+
+    if (!data.length) {
+
+        list.innerHTML =
+            "<div class='empty'>Chưa có giao dịch nào.</div>";
+
+        return;
+    }
+
+
+    list.innerHTML = "";
+
+
+    data.slice(0, 20).forEach(transaction => {
+
+        const row =
+            document.createElement("div");
+
+
+        row.className =
+            "transaction";
+
+
+        const left =
+            document.createElement("div");
+
+
+        left.className =
+            "transaction-left";
+
+
+        const desc =
+            document.createElement("div");
+
+
+        desc.className =
+            "transaction-desc";
+
+
+        desc.textContent =
+            transaction.description ||
+            transaction.category ||
+            "Giao dịch";
+
+
+        const date =
+            document.createElement("div");
+
+
+        date.className =
+            "transaction-date";
+
+
+        date.textContent =
+            transaction.transaction_date +
+            " • " +
+            (transaction.category || "");
+
+
+        left.appendChild(desc);
+
+        left.appendChild(date);
+
+
+        const amount =
+            document.createElement("div");
+
+
+        amount.className =
+            "transaction-amount";
+
+
+        amount.textContent =
+            (transaction.type === "income" ? "+ " : "- ") +
+            formatMoney(Number(transaction.amount));
+
+
+        if (transaction.type === "income") {
+
+            amount.classList.add("income");
+
+        } else {
+
+            amount.classList.add("expense");
+
+        }
+
+
+        row.appendChild(left);
+
+        row.appendChild(amount);
+
+
+        list.appendChild(row);
+
+    });
+
+}
+
+
+
+document
+    .getElementById("transactionForm")
+    .addEventListener("submit", async function(event) {
+
+        event.preventDefault();
+
+
+        const message =
+            document.getElementById("formMessage");
+
+
+        message.textContent =
+            "Đang lưu...";
+
+
+        const {
+            data: {
+                session
+            }
+        } = await supabaseClient.auth.getSession();
+
+
+        if (!session) {
+
+            message.textContent =
+                "Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.";
+
+            return;
+        }
+
+
+        const transaction = {
+
+            user_id: session.user.id,
+
+            transaction_date:
+                document.getElementById("transactionDate").value,
+
+            type:
+                document.getElementById("transactionType").value,
+
+            category:
+                document.getElementById("category").value.trim(),
+
+            description:
+                document.getElementById("description").value.trim(),
+
+            amount:
+                Number(document.getElementById("amount").value)
+
+        };
+
+
+        const {
+            error
+        } = await supabaseClient
+            .from("transactions")
+            .insert(transaction);
+
+
+        if (error) {
+
+            console.error(error);
+
+            message.textContent =
+                "Có lỗi khi lưu: " +
+                error.message;
+
+            return;
+        }
+
+
+        message.textContent =
+            "✓ Đã lưu giao dịch.";
+
+
+        document.getElementById("category").value = "";
+
+        document.getElementById("description").value = "";
+
+        document.getElementById("amount").value = "";
+
+
+        await loadTransactions();
+
+    });
+
+
+
+document
+    .getElementById("logoutBtn")
+    .addEventListener("click", async function() {
+
+        await supabaseClient.auth.signOut();
+
+        window.location.href =
+            "index.html";
+
+    });
+
+
+
+supabaseClient.auth.onAuthStateChange(
+    (event, session) => {
+
+        if (!session) {
+
+            window.location.href =
+                "index.html";
+
+        }
+
+    }
+);
+
+
+
+loadDashboard();
+
+</script>
+
+</body>
+</html>
