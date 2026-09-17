@@ -291,6 +291,18 @@
         SUPABASE_URL,
         SUPABASE_PUBLISHABLE_KEY
     );
+async function loginWithGoogle() {
+    const { error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+            redirectTo: window.location.href
+        }
+    });
+
+    if (error) {
+        alert('Đăng nhập Google thất bại: ' + error.message);
+    }
+}
 </script>
 </head>
 
@@ -308,6 +320,9 @@
                 <a href="#topics">Quan tâm</a>
                 <a href="#contact">Liên hệ</a>
             </nav>
+            <div class="auth-area">
+    <button id="loginBtn" onclick="loginWithGoogle()">Đăng nhập</button>
+</div>
         </div>
     </header>
 
