@@ -304,6 +304,22 @@ async function loginWithGoogle() {
     }
 }
 </script>
+    <script>
+async function checkLogin() {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+
+    const loginBtn = document.getElementById("loginBtn");
+
+    if (session) {
+        loginBtn.textContent = "Đăng xuất";
+        loginBtn.onclick = async () => {
+            await supabaseClient.auth.signOut();
+            window.location.reload();
+        };
+    }
+}
+        window.addEventListener("DOMContentLoaded", checkLogin);
+</script>
 </head>
 
 <body>
