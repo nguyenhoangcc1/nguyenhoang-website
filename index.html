@@ -305,20 +305,34 @@ async function loginWithGoogle() {
 }
 </script>
     <script>
-async function checkLogin() {
-    const { data: { session } } = await supabaseClient.auth.getSession();
-
+function updateLoginButton(session) {
     const loginBtn = document.getElementById("loginBtn");
+
+    if (!loginBtn) return;
 
     if (session) {
         loginBtn.textContent = "Đăng xuất";
         loginBtn.onclick = async () => {
-            await supabaseClient.auth.signOut();
-            window.location.reload();
+            const { error } = await supabaseClient.auth.signOut();
+
+            if (error) {
+                alert("Đăng xuất thất bại: " + error.message);
+            }
         };
+    } else {
+        loginBtn.textContent = "Đăng nhập";
+        loginBtn.onclick = loginWithGoogle;
     }
 }
-        window.addEventListener("DOMContentLoaded", checkLogin);
+
+supabaseClient.auth.onAuthStateChange((event, session) => {
+    updateLoginButton(session);
+});
+
+window.addEventListener("DOMContentLoaded", async () => {
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    updateLoginButton(session);
+});
 </script>
 </head>
 
