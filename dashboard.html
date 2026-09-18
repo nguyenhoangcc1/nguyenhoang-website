@@ -316,6 +316,8 @@ async function loadAccounts(){
 }
 
 async function deleteAccount(account){
+      const session=await getSession();
+    if(!session){alert("Phiên đăng nhập đã hết.");return;}
     const {count,error:checkError}=await supabaseClient
         .from("transactions")
         .select("id",{count:"exact",head:true})
