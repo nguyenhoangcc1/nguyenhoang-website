@@ -67,7 +67,8 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <div class="section">
 <h2>🏦 Tài khoản của tôi</h2>
 <p style="color:#64748b;margin-top:-8px">Ví dụ: Tiền mặt, Vietcombank, BIDV, thẻ tín dụng...</p>
-<form id="accountForm">
+  <button class="add-btn" type="button" onclick="document.getElementById('accountForm').style.display='block';">+ Thêm tài khoản</button>
+<form id="accountForm" style="display:none;">
 <div class="form-grid">
 <div class="form-group">
 <label for="accountName">Tên tài khoản</label>
@@ -168,27 +169,194 @@ await loadTransactions();
 }
 
 async function loadAccounts(){
-const {data,error}=await supabaseClient.from("accounts").select("*").order("created_at",{ascending:true});
-if(error){console.error(error);document.getElementById("accountList").innerHTML="<div class='empty'>Không thể tải tài khoản.</div>";return;}
-const select=document.getElementById("transactionAccount");
-select.innerHTML='<option value="">-- Chưa chọn tài khoản --</option>';
-data.forEach(account=>{
-const option=document.createElement("option");
-option.value=account.id;
-option.textContent=account.name;
-select.appendChild(option);
-});
-const list=document.getElementById("accountList");
-if(!data.length){list.innerHTML="<div class='empty'>Chưa có tài khoản nào.</div>";return;}
-list.innerHTML="";
-data.forEach(account=>{
-const card=document.createElement("div");
-card.className="account-card";
-const name=document.createElement("div");name.className="account-name";name.textContent=account.name;
-const meta=document.createElement("div");meta.className="account-meta";meta.textContent=account.type==="cash"?"Tiền mặt":account.type==="bank"?"Ngân hàng":account.type==="credit"?"Thẻ tín dụng":account.type==="investment"?"Đầu tư":"Khác";
-const bal=document.createElement("div");bal.className="account-balance";bal.textContent=formatMoney(Number(account.balance||0));
-card.appendChild(name);card.appendChild(meta);card.appendChild(bal);list.appendChild(card);
-});
+    const {data,error}=await supabaseClient
+        .from("accounts")
+        .select("*")
+        .order("created_at",{ascending:true});
+
+    if(error){
+        console.error(error);
+        document.getElementById("accountList").innerHTML=
+            '<div class="empty">Không thể tải tài khoản.</div>';
+        return;
+    }
+
+    const select=document.getElementById("transactionAccount");
+
+    select.innerHTML='<option value="">-- Chưa chọn tài khoản --</option>';
+
+    data.forEach(account=>{
+        const option=document.createElement("option");
+        option.value=account.id;
+        option.textContent=account.name;
+        select.appendChild(option);
+    });
+
+    const list=document.getElementById("accountList");
+
+    if(!data.length){
+        list.innerHTML='<div class="empty">Chưa có tài khoản nào.</div>';
+        return;
+    }
+
+    list.innerHTML="";
+
+    data.forEach(account=>{
+        const card=document.createElement("div");
+        card.className="account-card";
+
+        const name=document.createElement("div");
+        name.className="account-name";
+        name.textContent=account.name;
+
+        const meta=document.createElement("div");
+        meta.className="account-meta";
+        meta.textContent=
+            account.type==="cash" ? "Tiền mặt" :
+            account.type==="bank" ? "Ngân hàng" :
+            account.type==="credit" ? "Thẻ tín dụng" :
+            account.type==="investment" ? "Đầu tư" : "Khác";
+
+        const bal=document.createElement("div");
+        bal.className="account-balance";
+        bal.textContent=formatMoney(Number(account.balance||0));
+
+        const actions=document.createElement("div");
+        actions.style.marginTop="12px";
+        actions.style.display="flex";
+        actions.style.gap="8px";
+
+        const editBtn=document.createElement("button");
+        editBtn.type="button";
+        editBtn.textContent="✏️ Sửa";
+        editBtn.className="add-btn";
+        editBtn.style.padding="7px 12px";
+        editBtn.onclick=()=>editAccount(account);
+
+        const deleteBtn=document.createElement("button");
+        deleteBtn.type="button";
+        deleteBtn.textContent="🗑️ Xóa";
+        deleteBtn.className="add-btn";
+        deleteBtn.style.padding="7px 12px";
+        deleteBtn.style.background="#dc3545";
+        deleteBtn.onclick=()=>deleteAccount(account);
+
+        actions.appendChild(editBtn);
+        actions.appendChild(deleteBtn);
+
+        card.appendChild(name);
+        card.appendChild(meta);
+        card.appendChild(bal);
+        card.appendChild(actions);
+
+        list.appendChild(card);
+    });
+}
+  async function editAccount(account){
+    const newName=prompt("Tên tài khoản:",account.name);
+
+    if(newName===null) return;
+
+    const name=newName.trim();
+
+    if(!name){
+        alert("Tên tài khoản không được để trống.");
+        return;
+    }
+
+    const newBalance=prompt(
+        "Số dư hiện tại (VND):",
+        Number(account.balance||0)
+    );
+
+    if(newBalance===null) return;
+
+    const balance=Number(newBalance);
+
+    if(!Number.isFinite(balance)){
+        alert("Số dư không hợp lệ.");
+        return;
+    }
+
+    const newType=prompt(
+        "Loại tài khoản (cash/bank/credit/investment/other):",
+        account.type
+    );
+
+    if(newType===null) return;
+
+    const type=newType.trim();
+
+    const validTypes=["cash","bank","credit","investment","other"];
+
+    if(!validTypes.includes(type)){
+        alert("Loại tài khoản không hợp lệ.");
+        return;
+    }
+
+    const {error}=await supabaseClient
+        .from("accounts")
+        .update({
+            name:name,
+            type:type,
+            balance:balance
+        })
+        .eq("id",account.id)
+        .eq("user_id",session.user.id);
+
+    if(error){
+        console.error(error);
+        alert("Không thể sửa tài khoản: "+error.message);
+        return;
+    }
+
+    await loadAccounts();
+}
+
+async function deleteAccount(account){
+    const {count,error:checkError}=await supabaseClient
+        .from("transactions")
+        .select("id",{count:"exact",head:true})
+        .eq("account_id",account.id)
+        .eq("user_id",session.user.id);
+
+    if(checkError){
+        console.error(checkError);
+        alert("Không thể kiểm tra giao dịch của tài khoản.");
+        return;
+    }
+
+    if(count && count>0){
+        alert(
+            "Không thể xóa tài khoản này vì đã có "+
+            count+
+            " giao dịch.\n\nBạn có thể sửa tên hoặc số dư thay vì xóa."
+        );
+        return;
+    }
+
+    const ok=confirm(
+        'Bạn có chắc muốn xóa tài khoản "'+
+        account.name+
+        '" không?'
+    );
+
+    if(!ok) return;
+
+    const {error}=await supabaseClient
+        .from("accounts")
+        .delete()
+        .eq("id",account.id)
+        .eq("user_id",session.user.id);
+
+    if(error){
+        console.error(error);
+        alert("Không thể xóa tài khoản: "+error.message);
+        return;
+    }
+
+    await loadAccounts();
+}
 }
 
 async function loadTransactions(){
