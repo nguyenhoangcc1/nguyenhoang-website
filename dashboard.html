@@ -253,6 +253,8 @@ async function loadAccounts(){
     });
 }
   async function editAccount(account){
+        const session=await getSession();
+    if(!session){alert("Phiên đăng nhập đã hết.");return;}
     const newName=prompt("Tên tài khoản:",account.name);
 
     if(newName===null) return;
