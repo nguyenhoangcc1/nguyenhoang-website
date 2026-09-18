@@ -357,7 +357,6 @@ async function deleteAccount(account){
 
     await loadAccounts();
 }
-}
 
 async function loadTransactions(){
 const {data,error}=await supabaseClient.from("transactions").select("*").order("transaction_date",{ascending:false}).order("created_at",{ascending:false});
