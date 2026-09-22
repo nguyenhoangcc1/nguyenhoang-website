@@ -146,29 +146,56 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <script>
 const SUPABASE_URL="https://mxjcpnmquxjkrfrchivg.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14amNwbm1xdXhqa3JmcmNoaXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1NDQ0NDEsImV4cCI6MjEwNTEyMDQ0MX0.xk_BAHOUkK4JJFXDBJA1NsXKzAgyDQgy46qeVKW-ZlM";
-const supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
 
-function formatMoney(amount){return new Intl.NumberFormat("vi-VN").format(amount)+" đ";}
+const supabaseClient=window.supabase.createClient(
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY
+);
+
+function formatMoney(amount){
+    return new Intl.NumberFormat("vi-VN").format(amount)+" đ";
+}
 
 async function getSession(){
-const {data:{session}}=await supabaseClient.auth.getSession();
-return session;
+    const {data:{session}}=await supabaseClient.auth.getSession();
+    return session;
 }
 
 async function loadDashboard(){
-const session=await getSession();
-if(!session){window.location.href="index.html";return;}
-document.getElementById("loading").style.display="none";
-document.getElementById("dashboard").style.display="block";
-const user=session.user;
-const name=user.user_metadata?.full_name||user.user_metadata?.name||user.email||"bạn";
-document.getElementById("userName").textContent=name;
-document.getElementById("transactionDate").value=new Date().toISOString().split("T")[0];
-await loadAccounts();
-await loadTransactions();
+    const session=await getSession();
+
+    if(!session){
+        window.location.href="index.html";
+        return;
+    }
+
+    document.getElementById("loading").style.display="none";
+    document.getElementById("dashboard").style.display="block";
+
+    const user=session.user;
+
+    const name=
+        user.user_metadata?.full_name||
+        user.user_metadata?.name||
+        user.email||
+        "bạn";
+
+    document.getElementById("userName").textContent=name;
+
+    document.getElementById("transactionDate").value=
+        new Date().toISOString().split("T")[0];
+
+    await loadAccounts();
+    await loadTransactions();
 }
 
+
+/* =========================
+   TÀI KHOẢN
+========================= */
+
 async function loadAccounts(){
+
     const {data,error}=await supabaseClient
         .from("accounts")
         .select("*")
@@ -183,25 +210,30 @@ async function loadAccounts(){
 
     const select=document.getElementById("transactionAccount");
 
-    select.innerHTML='<option value="">-- Chưa chọn tài khoản --</option>';
+    select.innerHTML=
+        '<option value="">-- Chưa chọn tài khoản --</option>';
 
     data.forEach(account=>{
         const option=document.createElement("option");
+
         option.value=account.id;
         option.textContent=account.name;
+
         select.appendChild(option);
     });
 
     const list=document.getElementById("accountList");
 
     if(!data.length){
-        list.innerHTML='<div class="empty">Chưa có tài khoản nào.</div>';
+        list.innerHTML=
+            '<div class="empty">Chưa có tài khoản nào.</div>';
         return;
     }
 
     list.innerHTML="";
 
     data.forEach(account=>{
+
         const card=document.createElement("div");
         card.className="account-card";
 
@@ -211,11 +243,13 @@ async function loadAccounts(){
 
         const meta=document.createElement("div");
         meta.className="account-meta";
+
         meta.textContent=
             account.type==="cash" ? "Tiền mặt" :
             account.type==="bank" ? "Ngân hàng" :
             account.type==="credit" ? "Thẻ tín dụng" :
-            account.type==="investment" ? "Đầu tư" : "Khác";
+            account.type==="investment" ? "Đầu tư" :
+            "Khác";
 
         const bal=document.createElement("div");
         bal.className="account-balance";
@@ -227,6 +261,7 @@ async function loadAccounts(){
         actions.style.gap="8px";
 
         const editBtn=document.createElement("button");
+
         editBtn.type="button";
         editBtn.textContent="✏️ Sửa";
         editBtn.className="add-btn";
@@ -234,6 +269,7 @@ async function loadAccounts(){
         editBtn.onclick=()=>editAccount(account);
 
         const deleteBtn=document.createElement("button");
+
         deleteBtn.type="button";
         deleteBtn.textContent="🗑️ Xóa";
         deleteBtn.className="add-btn";
@@ -252,10 +288,21 @@ async function loadAccounts(){
         list.appendChild(card);
     });
 }
-  async function editAccount(account){
-        const session=await getSession();
-    if(!session){alert("Phiên đăng nhập đã hết.");return;}
-    const newName=prompt("Tên tài khoản:",account.name);
+
+
+async function editAccount(account){
+
+    const session=await getSession();
+
+    if(!session){
+        alert("Phiên đăng nhập đã hết.");
+        return;
+    }
+
+    const newName=prompt(
+        "Tên tài khoản:",
+        account.name
+    );
 
     if(newName===null) return;
 
@@ -289,7 +336,13 @@ async function loadAccounts(){
 
     const type=newType.trim();
 
-    const validTypes=["cash","bank","credit","investment","other"];
+    const validTypes=[
+        "cash",
+        "bank",
+        "credit",
+        "investment",
+        "other"
+    ];
 
     if(!validTypes.includes(type)){
         alert("Loại tài khoản không hợp lệ.");
@@ -314,7 +367,14 @@ async function loadAccounts(){
 
     await loadAccounts();
 }
-  async function deleteTransaction(transaction){
+
+
+/* =========================
+   XÓA GIAO DỊCH + HOÀN SỐ DƯ
+========================= */
+
+async function deleteTransaction(transaction){
+
     const session=await getSession();
 
     if(!session){
@@ -324,20 +384,25 @@ async function loadAccounts(){
 
     const ok=confirm(
         'Bạn có chắc muốn xóa giao dịch "'+
-        (transaction.description||transaction.category||"Giao dịch")+
+        (transaction.description||
+         transaction.category||
+         "Giao dịch")+
         '" không?'
     );
 
     if(!ok) return;
 
+
+    /* Giao dịch có liên kết tài khoản */
     if(transaction.account_id){
 
-        const {data:account,error:accountError}=await supabaseClient
-            .from("accounts")
-            .select("balance")
-            .eq("id",transaction.account_id)
-            .eq("user_id",session.user.id)
-            .single();
+        const {data:account,error:accountError}=
+            await supabaseClient
+                .from("accounts")
+                .select("balance")
+                .eq("id",transaction.account_id)
+                .eq("user_id",session.user.id)
+                .single();
 
         if(accountError){
             console.error(accountError);
@@ -345,19 +410,40 @@ async function loadAccounts(){
             return;
         }
 
-        const currentBalance=Number(account.balance||0);
+        const currentBalance=
+            Number(account.balance||0);
 
-        const newBalance=
-            currentBalance+
-            (transaction.type==="income"
-                ? -Number(transaction.amount)
-                : Number(transaction.amount));
+        let newBalance;
 
-        const {error:updateError}=await supabaseClient
-            .from("accounts")
-            .update({balance:newBalance})
-            .eq("id",transaction.account_id)
-            .eq("user_id",session.user.id);
+        /*
+         * Xóa CHI TIÊU:
+         * tiền đã bị trừ -> cộng lại
+         *
+         * Xóa THU NHẬP:
+         * tiền đã được cộng -> trừ lại
+         */
+
+        if(transaction.type==="income"){
+            newBalance=
+                currentBalance-
+                Number(transaction.amount);
+        }else{
+            newBalance=
+                currentBalance+
+                Number(transaction.amount);
+        }
+
+
+        /* Cập nhật số dư */
+
+        const {error:updateError}=
+            await supabaseClient
+                .from("accounts")
+                .update({
+                    balance:newBalance
+                })
+                .eq("id",transaction.account_id)
+                .eq("user_id",session.user.id);
 
         if(updateError){
             console.error(updateError);
@@ -365,26 +451,41 @@ async function loadAccounts(){
             return;
         }
 
-        const {error:deleteError}=await supabaseClient
-            .from("transactions")
-            .delete()
-            .eq("id",transaction.id)
-            .eq("user_id",session.user.id);
+
+        /* Xóa giao dịch */
+
+        const {error:deleteError}=
+            await supabaseClient
+                .from("transactions")
+                .delete()
+                .eq("id",transaction.id)
+                .eq("user_id",session.user.id);
 
         if(deleteError){
+
             console.error(deleteError);
+
+            /* Khôi phục số dư nếu xóa giao dịch thất bại */
 
             await supabaseClient
                 .from("accounts")
-                .update({balance:currentBalance})
+                .update({
+                    balance:currentBalance
+                })
                 .eq("id",transaction.account_id)
                 .eq("user_id",session.user.id);
 
-            alert("Không thể xóa giao dịch. Số dư đã được khôi phục.");
+            alert(
+                "Không thể xóa giao dịch. "+
+                "Số dư đã được khôi phục."
+            );
+
             return;
         }
 
     }else{
+
+        /* Giao dịch không có tài khoản */
 
         const {error}=await supabaseClient
             .from("transactions")
@@ -394,7 +495,10 @@ async function loadAccounts(){
 
         if(error){
             console.error(error);
-            alert("Có lỗi khi xóa giao dịch: "+error.message);
+            alert(
+                "Có lỗi khi xóa giao dịch: "+
+                error.message
+            );
             return;
         }
     }
@@ -403,50 +507,47 @@ async function loadAccounts(){
     await loadTransactions();
 }
 
-    const ok=confirm(
-        'Bạn có chắc muốn xóa giao dịch "'+
-        (transaction.description||transaction.category||"Giao dịch")+
-        '" không?'
-    );
 
-    if(!ok) return;
+/* =========================
+   XÓA TÀI KHOẢN
+========================= */
 
-    const {error}=await supabaseClient
-        .from("transactions")
-        .delete()
-        .eq("id",transaction.id)
-        .eq("user_id",session.user.id);
+async function deleteAccount(account){
 
-    if(error){
-        console.error(error);
-        alert("Không thể xóa giao dịch: "+error.message);
+    const session=await getSession();
+
+    if(!session){
+        alert("Phiên đăng nhập đã hết.");
         return;
     }
 
-    await loadTransactions();
-    await loadAccounts();
-}
-async function deleteAccount(account){
-      const session=await getSession();
-    if(!session){alert("Phiên đăng nhập đã hết.");return;}
-    const {count,error:checkError}=await supabaseClient
-        .from("transactions")
-        .select("id",{count:"exact",head:true})
-        .eq("account_id",account.id)
-        .eq("user_id",session.user.id);
+    const {count,error:checkError}=
+        await supabaseClient
+            .from("transactions")
+            .select("id",{
+                count:"exact",
+                head:true
+            })
+            .eq("account_id",account.id)
+            .eq("user_id",session.user.id);
 
     if(checkError){
         console.error(checkError);
-        alert("Không thể kiểm tra giao dịch của tài khoản.");
+        alert(
+            "Không thể kiểm tra giao dịch của tài khoản."
+        );
         return;
     }
 
     if(count && count>0){
+
         alert(
             "Không thể xóa tài khoản này vì đã có "+
             count+
-            " giao dịch.\n\nBạn có thể sửa tên hoặc số dư thay vì xóa."
+            " giao dịch.\n\n"+
+            "Bạn có thể sửa tên hoặc số dư thay vì xóa."
         );
+
         return;
     }
 
@@ -466,36 +567,91 @@ async function deleteAccount(account){
 
     if(error){
         console.error(error);
-        alert("Không thể xóa tài khoản: "+error.message);
+        alert(
+            "Không thể xóa tài khoản: "+
+            error.message
+        );
         return;
     }
 
     await loadAccounts();
 }
 
+
+/* =========================
+   GIAO DỊCH
+========================= */
+
 async function loadTransactions(){
-const {data,error}=await supabaseClient.from("transactions").select("*").order("transaction_date",{ascending:false}).order("created_at",{ascending:false});
-if(error){console.error(error);document.getElementById("transactionList").innerHTML="<div class='empty'>Không thể tải dữ liệu.</div>";return;}
-let totalIncome=0,totalExpense=0;
-data.forEach(t=>{const amount=Number(t.amount);if(t.type==="income")totalIncome+=amount;if(t.type==="expense")totalExpense+=amount;});
-document.getElementById("totalIncome").textContent=formatMoney(totalIncome);
-document.getElementById("totalExpense").textContent=formatMoney(totalExpense);
-document.getElementById("totalBalance").textContent=formatMoney(totalIncome-totalExpense);
-document.getElementById("transactionCount").textContent=data.length;
-renderTransactions(data);
+
+    const {data,error}=await supabaseClient
+        .from("transactions")
+        .select("*")
+        .order("transaction_date",{
+            ascending:false
+        })
+        .order("created_at",{
+            ascending:false
+        });
+
+    if(error){
+        console.error(error);
+
+        document.getElementById("transactionList").innerHTML=
+            "<div class='empty'>Không thể tải dữ liệu.</div>";
+
+        return;
+    }
+
+    let totalIncome=0;
+    let totalExpense=0;
+
+    data.forEach(t=>{
+
+        const amount=Number(t.amount);
+
+        if(t.type==="income"){
+            totalIncome+=amount;
+        }
+
+        if(t.type==="expense"){
+            totalExpense+=amount;
+        }
+    });
+
+    document.getElementById("totalIncome").textContent=
+        formatMoney(totalIncome);
+
+    document.getElementById("totalExpense").textContent=
+        formatMoney(totalExpense);
+
+    document.getElementById("totalBalance").textContent=
+        formatMoney(totalIncome-totalExpense);
+
+    document.getElementById("transactionCount").textContent=
+        data.length;
+
+    renderTransactions(data);
 }
 
+
 function renderTransactions(data){
-    const list=document.getElementById("transactionList");
+
+    const list=
+        document.getElementById("transactionList");
 
     if(!data.length){
-        list.innerHTML="<div class='empty'>Chưa có giao dịch nào.</div>";
+
+        list.innerHTML=
+            "<div class='empty'>Chưa có giao dịch nào.</div>";
+
         return;
     }
 
     list.innerHTML="";
 
     data.slice(0,20).forEach(t=>{
+
         const row=document.createElement("div");
         row.className="transaction";
 
@@ -504,33 +660,57 @@ function renderTransactions(data){
 
         const desc=document.createElement("div");
         desc.className="transaction-desc";
-        desc.textContent=t.description||t.category||"Giao dịch";
+        desc.textContent=
+            t.description||
+            t.category||
+            "Giao dịch";
 
         const date=document.createElement("div");
         date.className="transaction-date";
-        date.textContent=t.transaction_date+" • "+(t.category||"");
+        date.textContent=
+            t.transaction_date+
+            " • "+
+            (t.category||"");
 
         left.appendChild(desc);
         left.appendChild(date);
 
+
         const right=document.createElement("div");
+
         right.style.display="flex";
         right.style.alignItems="center";
         right.style.gap="10px";
 
+
         const amount=document.createElement("div");
+
         amount.className="transaction-amount";
-        amount.textContent=(t.type==="income"?"+ ":"- ")+formatMoney(Number(t.amount));
-        amount.classList.add(t.type==="income"?"income":"expense");
+
+        amount.textContent=
+            (t.type==="income"?"+ ":"- ")+
+            formatMoney(Number(t.amount));
+
+        amount.classList.add(
+            t.type==="income"
+                ?"income"
+                :"expense"
+        );
+
 
         const deleteBtn=document.createElement("button");
+
         deleteBtn.type="button";
         deleteBtn.textContent="🗑️ Xóa";
         deleteBtn.className="add-btn";
         deleteBtn.style.marginTop="0";
         deleteBtn.style.padding="7px 12px";
         deleteBtn.style.background="#dc3545";
-        deleteBtn.onclick=()=>deleteTransaction(t);
+
+        deleteBtn.onclick=()=>{
+            deleteTransaction(t);
+        };
+
 
         right.appendChild(amount);
         right.appendChild(deleteBtn);
@@ -542,94 +722,239 @@ function renderTransactions(data){
     });
 }
 
-document.getElementById("accountForm").addEventListener("submit",async function(e){
-e.preventDefault();
-const message=document.getElementById("accountMessage");message.textContent="Đang lưu...";
-const session=await getSession();if(!session){message.textContent="Phiên đăng nhập đã hết.";return;}
-const account={user_id:session.user.id,name:document.getElementById("accountName").value.trim(),type:document.getElementById("accountType").value,balance:Number(document.getElementById("accountBalance").value||0),currency:"VND"};
-const {error}=await supabaseClient.from("accounts").insert(account);
-if(error){console.error(error);message.textContent="Có lỗi khi lưu: "+error.message;return;}
-message.textContent="✓ Đã thêm tài khoản.";
-document.getElementById("accountName").value="";
-document.getElementById("accountBalance").value="0";
-await loadAccounts();
-});
 
-document.getElementById("transactionForm").addEventListener("submit",async function(e){
+/* =========================
+   THÊM TÀI KHOẢN
+========================= */
+
+document.getElementById("accountForm")
+.addEventListener("submit",async function(e){
+
     e.preventDefault();
 
-    const message=document.getElementById("formMessage");
+    const message=
+        document.getElementById("accountMessage");
+
     message.textContent="Đang lưu...";
 
     const session=await getSession();
+
     if(!session){
-        message.textContent="Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.";
+        message.textContent=
+            "Phiên đăng nhập đã hết.";
         return;
     }
 
-    const accountId=document.getElementById("transactionAccount").value||null;
-    const type=document.getElementById("transactionType").value;
-    const amount=Number(document.getElementById("amount").value);
+    const account={
+        user_id:session.user.id,
+        name:
+            document.getElementById("accountName")
+            .value.trim(),
+
+        type:
+            document.getElementById("accountType")
+            .value,
+
+        balance:
+            Number(
+                document.getElementById("accountBalance")
+                .value||0
+            ),
+
+        currency:"VND"
+    };
+
+    const {error}=await supabaseClient
+        .from("accounts")
+        .insert(account);
+
+    if(error){
+        console.error(error);
+        message.textContent=
+            "Có lỗi khi lưu: "+
+            error.message;
+        return;
+    }
+
+    message.textContent=
+        "✓ Đã thêm tài khoản.";
+
+    document.getElementById("accountName").value="";
+    document.getElementById("accountBalance").value="0";
+
+    await loadAccounts();
+});
+
+
+/* =========================
+   THÊM GIAO DỊCH
+========================= */
+
+document.getElementById("transactionForm")
+.addEventListener("submit",async function(e){
+
+    e.preventDefault();
+
+    const message=
+        document.getElementById("formMessage");
+
+    message.textContent="Đang lưu...";
+
+
+    const session=await getSession();
+
+    if(!session){
+
+        message.textContent=
+            "Phiên đăng nhập đã hết. "+
+            "Vui lòng đăng nhập lại.";
+
+        return;
+    }
+
+
+    const accountId=
+        document.getElementById("transactionAccount")
+        .value||null;
+
+    const type=
+        document.getElementById("transactionType")
+        .value;
+
+    const amount=
+        Number(
+            document.getElementById("amount")
+            .value
+        );
+
 
     if(amount<=0){
-        message.textContent="Số tiền không hợp lệ.";
+
+        message.textContent=
+            "Số tiền không hợp lệ.";
+
         return;
     }
 
+
     const transaction={
+
         user_id:session.user.id,
+
         account_id:accountId,
-        transaction_date:document.getElementById("transactionDate").value,
+
+        transaction_date:
+            document.getElementById("transactionDate")
+            .value,
+
         type:type,
-        category:document.getElementById("category").value.trim(),
-        description:document.getElementById("description").value.trim(),
+
+        category:
+            document.getElementById("category")
+            .value.trim(),
+
+        description:
+            document.getElementById("description")
+            .value.trim(),
+
         amount:amount
     };
 
-    const {data:savedTransaction,error}=await supabaseClient
+
+    /* Lưu giao dịch */
+
+    const {
+        data:savedTransaction,
+        error
+    }=await supabaseClient
         .from("transactions")
         .insert(transaction)
         .select()
         .single();
 
+
     if(error){
+
         console.error(error);
-        message.textContent="Có lỗi khi lưu giao dịch: "+error.message;
+
+        message.textContent=
+            "Có lỗi khi lưu giao dịch: "+
+            error.message;
+
         return;
     }
 
+
+    /* Nếu chọn tài khoản thì cập nhật số dư */
+
     if(accountId){
-        const {data:account,error:accountError}=await supabaseClient
+
+        const {
+            data:account,
+            error:accountError
+        }=await supabaseClient
             .from("accounts")
             .select("balance")
             .eq("id",accountId)
             .eq("user_id",session.user.id)
             .single();
 
+
         if(accountError){
+
             console.error(accountError);
+
+            /* Xóa giao dịch vừa tạo */
+
             await supabaseClient
                 .from("transactions")
                 .delete()
                 .eq("id",savedTransaction.id)
                 .eq("user_id",session.user.id);
 
-            message.textContent="Không thể cập nhật số dư tài khoản.";
+            message.textContent=
+                "Không thể cập nhật số dư tài khoản.";
+
             return;
         }
 
-        const newBalance=
-            Number(account.balance||0)+
-            (type==="income"?amount:-amount);
 
-        const {error:updateError}=await supabaseClient
-            .from("accounts")
-            .update({balance:newBalance})
-            .eq("id",accountId)
-            .eq("user_id",session.user.id);
+        const currentBalance=
+            Number(account.balance||0);
+
+
+        let newBalance;
+
+
+        if(type==="income"){
+
+            newBalance=
+                currentBalance+
+                amount;
+
+        }else{
+
+            newBalance=
+                currentBalance-
+                amount;
+        }
+
+
+        const {error:updateError}=
+            await supabaseClient
+                .from("accounts")
+                .update({
+                    balance:newBalance
+                })
+                .eq("id",accountId)
+                .eq("user_id",session.user.id);
+
 
         if(updateError){
+
             console.error(updateError);
+
+            /* Xóa giao dịch nếu cập nhật tài khoản thất bại */
 
             await supabaseClient
                 .from("transactions")
@@ -637,23 +962,55 @@ document.getElementById("transactionForm").addEventListener("submit",async funct
                 .eq("id",savedTransaction.id)
                 .eq("user_id",session.user.id);
 
-            message.textContent="Không thể cập nhật số dư tài khoản.";
+            message.textContent=
+                "Không thể cập nhật số dư tài khoản.";
+
             return;
         }
     }
 
-    message.textContent="✓ Đã lưu giao dịch.";
+
+    message.textContent=
+        "✓ Đã lưu giao dịch.";
+
 
     document.getElementById("category").value="";
     document.getElementById("description").value="";
     document.getElementById("amount").value="";
 
+
     await loadAccounts();
     await loadTransactions();
 });
 
-document.getElementById("logoutBtn").addEventListener("click",async function(){await supabaseClient.auth.signOut();window.location.href="index.html";});
-supabaseClient.auth.onAuthStateChange((event,session)=>{if(!session)window.location.href="index.html";});
+
+/* =========================
+   ĐĂNG XUẤT
+========================= */
+
+document.getElementById("logoutBtn")
+.addEventListener("click",async function(){
+
+    await supabaseClient.auth.signOut();
+
+    window.location.href="index.html";
+});
+
+
+/* =========================
+   KIỂM TRA ĐĂNG NHẬP
+========================= */
+
+supabaseClient.auth.onAuthStateChange(
+    (event,session)=>{
+
+        if(!session){
+            window.location.href="index.html";
+        }
+    }
+);
+
+
 loadDashboard();
 </script>
 </body>
