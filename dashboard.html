@@ -373,6 +373,239 @@ async function editAccount(account){
    XÓA GIAO DỊCH + HOÀN SỐ DƯ
 ========================= */
 
+  async function editTransaction(transaction){
+
+    const session=await getSession();
+
+    if(!session){
+        alert("Phiên đăng nhập đã hết.");
+        return;
+    }
+
+
+    const oldType=transaction.type;
+    const oldAmount=Number(transaction.amount);
+
+
+    const newType=prompt(
+        "Loại giao dịch:\n\n"+
+        "Nhập income = Thu nhập\n"+
+        "Nhập expense = Chi tiêu",
+        oldType
+    );
+
+    if(newType===null) return;
+
+    const type=newType.trim().toLowerCase();
+
+    if(type!=="income" && type!=="expense"){
+        alert("Loại giao dịch không hợp lệ.");
+        return;
+    }
+
+
+    const newAmount=prompt(
+        "Số tiền (VNĐ):",
+        oldAmount
+    );
+
+    if(newAmount===null) return;
+
+    const amount=Number(newAmount);
+
+    if(!Number.isFinite(amount) || amount<=0){
+        alert("Số tiền không hợp lệ.");
+        return;
+    }
+
+
+    const newCategory=prompt(
+        "Danh mục:",
+        transaction.category||""
+    );
+
+    if(newCategory===null) return;
+
+
+    const newDescription=prompt(
+        "Nội dung:",
+        transaction.description||""
+    );
+
+    if(newDescription===null) return;
+
+
+    /*
+     * Nếu giao dịch có tài khoản,
+     * trước tiên hoàn tác giao dịch cũ.
+     */
+
+    if(transaction.account_id){
+
+        const {
+            data:account,
+            error:accountError
+        }=await supabaseClient
+            .from("accounts")
+            .select("balance")
+            .eq("id",transaction.account_id)
+            .eq("user_id",session.user.id)
+            .single();
+
+        if(accountError){
+            console.error(accountError);
+            alert("Không tìm thấy tài khoản.");
+            return;
+        }
+
+
+        const currentBalance=
+            Number(account.balance||0);
+
+
+        /*
+         * Hoàn tác giao dịch cũ.
+         */
+
+        let balanceAfterOld;
+
+        if(oldType==="income"){
+
+            balanceAfterOld=
+                currentBalance-oldAmount;
+
+        }else{
+
+            balanceAfterOld=
+                currentBalance+oldAmount;
+        }
+
+
+        /*
+         * Áp dụng giao dịch mới.
+         */
+
+        let newBalance;
+
+        if(type==="income"){
+
+            newBalance=
+                balanceAfterOld+amount;
+
+        }else{
+
+            newBalance=
+                balanceAfterOld-amount;
+        }
+
+
+        /*
+         * Cập nhật giao dịch.
+         */
+
+        const {error:updateTransactionError}=
+            await supabaseClient
+                .from("transactions")
+                .update({
+                    type:type,
+                    amount:amount,
+                    category:newCategory.trim(),
+                    description:newDescription.trim()
+                })
+                .eq("id",transaction.id)
+                .eq("user_id",session.user.id);
+
+
+        if(updateTransactionError){
+
+            console.error(updateTransactionError);
+            alert(
+                "Không thể sửa giao dịch: "+
+                updateTransactionError.message
+            );
+
+            return;
+        }
+
+
+        /*
+         * Cập nhật số dư tài khoản.
+         */
+
+        const {error:updateAccountError}=
+            await supabaseClient
+                .from("accounts")
+                .update({
+                    balance:newBalance
+                })
+                .eq("id",transaction.account_id)
+                .eq("user_id",session.user.id);
+
+
+        if(updateAccountError){
+
+            console.error(updateAccountError);
+
+            /*
+             * Khôi phục giao dịch cũ.
+             */
+
+            await supabaseClient
+                .from("transactions")
+                .update({
+                    type:oldType,
+                    amount:oldAmount,
+                    category:transaction.category,
+                    description:transaction.description
+                })
+                .eq("id",transaction.id)
+                .eq("user_id",session.user.id);
+
+            alert(
+                "Không thể cập nhật số dư. "+
+                "Giao dịch đã được khôi phục."
+            );
+
+            return;
+        }
+
+    }else{
+
+        /*
+         * Giao dịch không liên kết tài khoản.
+         * Chỉ cần sửa dữ liệu giao dịch.
+         */
+
+        const {error}=await supabaseClient
+            .from("transactions")
+            .update({
+                type:type,
+                amount:amount,
+                category:newCategory.trim(),
+                description:newDescription.trim()
+            })
+            .eq("id",transaction.id)
+            .eq("user_id",session.user.id);
+
+        if(error){
+
+            console.error(error);
+
+            alert(
+                "Không thể sửa giao dịch: "+
+                error.message
+            );
+
+            return;
+        }
+    }
+
+
+    await loadAccounts();
+    await loadTransactions();
+
+    alert("✓ Đã cập nhật giao dịch.");
+}
 async function deleteTransaction(transaction){
 
     const session=await getSession();
@@ -637,14 +870,10 @@ async function loadTransactions(){
 
 function renderTransactions(data){
 
-    const list=
-        document.getElementById("transactionList");
+    const list=document.getElementById("transactionList");
 
     if(!data.length){
-
-        list.innerHTML=
-            "<div class='empty'>Chưa có giao dịch nào.</div>";
-
+        list.innerHTML="<div class='empty'>Chưa có giao dịch nào.</div>";
         return;
     }
 
@@ -680,7 +909,7 @@ function renderTransactions(data){
 
         right.style.display="flex";
         right.style.alignItems="center";
-        right.style.gap="10px";
+        right.style.gap="8px";
 
 
         const amount=document.createElement("div");
@@ -698,6 +927,19 @@ function renderTransactions(data){
         );
 
 
+        const editBtn=document.createElement("button");
+
+        editBtn.type="button";
+        editBtn.textContent="✏️ Sửa";
+        editBtn.className="add-btn";
+        editBtn.style.marginTop="0";
+        editBtn.style.padding="7px 12px";
+
+        editBtn.onclick=()=>{
+            editTransaction(t);
+        };
+
+
         const deleteBtn=document.createElement("button");
 
         deleteBtn.type="button";
@@ -713,6 +955,7 @@ function renderTransactions(data){
 
 
         right.appendChild(amount);
+        right.appendChild(editBtn);
         right.appendChild(deleteBtn);
 
         row.appendChild(left);
