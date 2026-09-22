@@ -505,26 +505,100 @@ await loadAccounts();
 });
 
 document.getElementById("transactionForm").addEventListener("submit",async function(e){
-e.preventDefault();
-const message=document.getElementById("formMessage");message.textContent="Đang lưu...";
-const session=await getSession();if(!session){message.textContent="Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.";return;}
-const accountId=document.getElementById("transactionAccount").value||null;
-const transaction={
-user_id:session.user.id,
-account_id:accountId,
-transaction_date:document.getElementById("transactionDate").value,
-type:document.getElementById("transactionType").value,
-category:document.getElementById("category").value.trim(),
-description:document.getElementById("description").value.trim(),
-amount:Number(document.getElementById("amount").value)
-};
-const {error}=await supabaseClient.from("transactions").insert(transaction);
-if(error){console.error(error);message.textContent="Có lỗi khi lưu: "+error.message;return;}
-message.textContent="✓ Đã lưu giao dịch.";
-document.getElementById("category").value="";
-document.getElementById("description").value="";
-document.getElementById("amount").value="";
-await loadTransactions();
+    e.preventDefault();
+
+    const message=document.getElementById("formMessage");
+    message.textContent="Đang lưu...";
+
+    const session=await getSession();
+    if(!session){
+        message.textContent="Phiên đăng nhập đã hết. Vui lòng đăng nhập lại.";
+        return;
+    }
+
+    const accountId=document.getElementById("transactionAccount").value||null;
+    const type=document.getElementById("transactionType").value;
+    const amount=Number(document.getElementById("amount").value);
+
+    if(amount<=0){
+        message.textContent="Số tiền không hợp lệ.";
+        return;
+    }
+
+    const transaction={
+        user_id:session.user.id,
+        account_id:accountId,
+        transaction_date:document.getElementById("transactionDate").value,
+        type:type,
+        category:document.getElementById("category").value.trim(),
+        description:document.getElementById("description").value.trim(),
+        amount:amount
+    };
+
+    const {data:savedTransaction,error}=await supabaseClient
+        .from("transactions")
+        .insert(transaction)
+        .select()
+        .single();
+
+    if(error){
+        console.error(error);
+        message.textContent="Có lỗi khi lưu giao dịch: "+error.message;
+        return;
+    }
+
+    if(accountId){
+        const {data:account,error:accountError}=await supabaseClient
+            .from("accounts")
+            .select("balance")
+            .eq("id",accountId)
+            .eq("user_id",session.user.id)
+            .single();
+
+        if(accountError){
+            console.error(accountError);
+            await supabaseClient
+                .from("transactions")
+                .delete()
+                .eq("id",savedTransaction.id)
+                .eq("user_id",session.user.id);
+
+            message.textContent="Không thể cập nhật số dư tài khoản.";
+            return;
+        }
+
+        const newBalance=
+            Number(account.balance||0)+
+            (type==="income"?amount:-amount);
+
+        const {error:updateError}=await supabaseClient
+            .from("accounts")
+            .update({balance:newBalance})
+            .eq("id",accountId)
+            .eq("user_id",session.user.id);
+
+        if(updateError){
+            console.error(updateError);
+
+            await supabaseClient
+                .from("transactions")
+                .delete()
+                .eq("id",savedTransaction.id)
+                .eq("user_id",session.user.id);
+
+            message.textContent="Không thể cập nhật số dư tài khoản.";
+            return;
+        }
+    }
+
+    message.textContent="✓ Đã lưu giao dịch.";
+
+    document.getElementById("category").value="";
+    document.getElementById("description").value="";
+    document.getElementById("amount").value="";
+
+    await loadAccounts();
+    await loadTransactions();
 });
 
 document.getElementById("logoutBtn").addEventListener("click",async function(){await supabaseClient.auth.signOut();window.location.href="index.html";});
