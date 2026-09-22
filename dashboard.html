@@ -19,7 +19,7 @@ a{text-decoration:none;color:inherit}
 .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:30px}
 .card{background:#fff;border-radius:14px;padding:22px;border:1px solid #e5e7eb}
 .card-title{color:#64748b;font-size:14px;margin-bottom:10px}.card-value{font-size:25px;font-weight:700}
-.income{color:#159957}.expense{color:#dc3545}.balance{color:#2864e8}
+.income{color:#159957}.expense{color:#dc3545}.balance{color:#2864e8}.transfer{color:#0f766e}
 .section{background:#fff;border-radius:14px;border:1px solid #e5e7eb;padding:25px;margin-bottom:25px}
 .section h2{margin-top:0;margin-bottom:20px;font-size:21px}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.form-group{display:flex;flex-direction:column}
@@ -106,19 +106,26 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <select id="transactionType" required>
 <option value="expense">Chi tiêu</option>
 <option value="income">Thu nhập</option>
+<option value="transfer">Chuyển khoản</option>
 </select>
 </div>
 <div class="form-group">
 <label for="transactionDate">Ngày</label>
 <input type="date" id="transactionDate" required>
 </div>
-<div class="form-group">
-<label for="transactionAccount">Tài khoản</label>
+<div class="form-group" id="fromAccountGroup">
+<label for="transactionAccount" id="transactionAccountLabel">Tài khoản</label>
 <select id="transactionAccount">
 <option value="">-- Chưa chọn tài khoản --</option>
 </select>
 </div>
-<div class="form-group">
+<div class="form-group" id="toAccountGroup" style="display:none;">
+<label for="transferToAccount">Đến tài khoản</label>
+<select id="transferToAccount">
+<option value="">-- Chưa chọn tài khoản --</option>
+</select>
+</div>
+<div class="form-group" id="categoryGroup">
 <label for="category">Danh mục</label>
 <input type="text" id="category" placeholder="Ví dụ: Ăn uống" required>
 </div>
@@ -131,7 +138,7 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <input type="text" id="description" placeholder="Ví dụ: Ăn trưa">
 </div>
 </div>
-<button class="add-btn" type="submit">+ Thêm giao dịch</button>
+<button class="add-btn" type="submit" id="transactionSubmitBtn">+ Thêm giao dịch</button>
 <div class="message" id="formMessage"></div>
 </form>
 </div>
@@ -151,6 +158,9 @@ const supabaseClient=window.supabase.createClient(
     SUPABASE_URL,
     SUPABASE_PUBLISHABLE_KEY
 );
+
+/* Ánh xạ id tài khoản -> tên, dùng để hiển thị chuyển khoản "Nguồn → Đích" */
+let accountNameById={};
 
 function formatMoney(amount){
     return new Intl.NumberFormat("vi-VN").format(amount)+" đ";
@@ -185,8 +195,8 @@ async function loadDashboard(){
     document.getElementById("transactionDate").value=
         new Date().toISOString().split("T")[0];
 
-    await loadAccounts();
-    await loadTransactions();
+    await loadAccounts(session.user.id);
+    await loadTransactions(session.user.id);
 }
 
 
@@ -194,11 +204,12 @@ async function loadDashboard(){
    TÀI KHOẢN
 ========================= */
 
-async function loadAccounts(){
+async function loadAccounts(userId){
 
     const {data,error}=await supabaseClient
         .from("accounts")
         .select("*")
+        .eq("user_id",userId)
         .order("created_at",{ascending:true});
 
     if(error){
@@ -208,9 +219,19 @@ async function loadAccounts(){
         return;
     }
 
+    accountNameById={};
+
+    data.forEach(account=>{
+        accountNameById[account.id]=account.name;
+    });
+
     const select=document.getElementById("transactionAccount");
+    const toSelect=document.getElementById("transferToAccount");
 
     select.innerHTML=
+        '<option value="">-- Chưa chọn tài khoản --</option>';
+
+    toSelect.innerHTML=
         '<option value="">-- Chưa chọn tài khoản --</option>';
 
     data.forEach(account=>{
@@ -220,6 +241,7 @@ async function loadAccounts(){
         option.textContent=account.name;
 
         select.appendChild(option);
+        toSelect.appendChild(option.cloneNode(true));
     });
 
     const list=document.getElementById("accountList");
@@ -365,7 +387,7 @@ async function editAccount(account){
         return;
     }
 
-    await loadAccounts();
+    await loadAccounts(session.user.id);
 }
 
 
@@ -379,6 +401,12 @@ async function editAccount(account){
 
     if(!session){
         alert("Phiên đăng nhập đã hết.");
+        return;
+    }
+
+    /* Chuyển khoản có luồng sửa riêng (editTransfer), không dùng hàm này */
+    if(transaction.type==="transfer"){
+        alert("Giao dịch chuyển khoản dùng nút Sửa riêng trên dòng chuyển khoản.");
         return;
     }
 
@@ -601,8 +629,8 @@ async function editAccount(account){
     }
 
 
-    await loadAccounts();
-    await loadTransactions();
+    await loadAccounts(session.user.id);
+    await loadTransactions(session.user.id);
 
     alert("✓ Đã cập nhật giao dịch.");
 }
@@ -612,6 +640,12 @@ async function deleteTransaction(transaction){
 
     if(!session){
         alert("Phiên đăng nhập đã hết.");
+        return;
+    }
+
+    /* Chuyển khoản có luồng xóa riêng (deleteTransfer), không dùng hàm này */
+    if(transaction.type==="transfer"){
+        alert("Giao dịch chuyển khoản dùng nút Xóa riêng trên dòng chuyển khoản.");
         return;
     }
 
@@ -736,8 +770,129 @@ async function deleteTransaction(transaction){
         }
     }
 
-    await loadAccounts();
-    await loadTransactions();
+    await loadAccounts(session.user.id);
+    await loadTransactions(session.user.id);
+}
+
+
+/* =========================
+   SỬA / XÓA CHUYỂN KHOẢN (qua RPC)
+   Bản đầu: chỉ sửa số tiền/ngày/nội dung, giữ nguyên nguồn/đích.
+========================= */
+
+async function editTransfer(t){
+
+    const session=await getSession();
+
+    if(!session){
+        alert("Phiên đăng nhập đã hết.");
+        return;
+    }
+
+    const fromName=accountNameById[t.account_id]||"?";
+    const toName=accountNameById[t.destination_account_id]||"?";
+
+    const newAmount=prompt(
+        "Sửa chuyển khoản:\n"+
+        fromName+" → "+toName+
+        "\n\nSố tiền (VNĐ):",
+        Number(t.amount)
+    );
+
+    if(newAmount===null) return;
+
+    const amount=Number(newAmount);
+
+    if(!Number.isFinite(amount)||amount<=0){
+        alert("Số tiền không hợp lệ.");
+        return;
+    }
+
+    const newDate=prompt(
+        "Ngày:",
+        t.transaction_date||""
+    );
+
+    if(newDate===null) return;
+
+    if(!newDate){
+        alert("Ngày không được để trống.");
+        return;
+    }
+
+    const newDescription=prompt(
+        "Nội dung:",
+        t.description||""
+    );
+
+    if(newDescription===null) return;
+
+    const {error}=await supabaseClient.rpc(
+        "update_transfer",
+        {
+            p_tx_id:t.id,
+            p_from_account_id:t.account_id,
+            p_to_account_id:t.destination_account_id,
+            p_amount:amount,
+            p_transaction_date:newDate,
+            p_description:newDescription.trim()||null
+        }
+    );
+
+    if(error){
+        console.error(error);
+        alert(
+            "Không thể sửa chuyển khoản: "+
+            error.message
+        );
+        return;
+    }
+
+    await loadAccounts(session.user.id);
+    await loadTransactions(session.user.id);
+
+    alert("✓ Đã cập nhật chuyển khoản.");
+}
+
+async function deleteTransfer(t){
+
+    const session=await getSession();
+
+    if(!session){
+        alert("Phiên đăng nhập đã hết.");
+        return;
+    }
+
+    const fromName=accountNameById[t.account_id]||"?";
+    const toName=accountNameById[t.destination_account_id]||"?";
+
+    const ok=confirm(
+        'Bạn có chắc muốn xóa chuyển khoản "'+
+        fromName+" → "+toName+
+        " ("+formatMoney(Number(t.amount))+')"'+
+        " không?"
+    );
+
+    if(!ok) return;
+
+    const {error}=await supabaseClient.rpc(
+        "delete_transfer",
+        {p_tx_id:t.id}
+    );
+
+    if(error){
+        console.error(error);
+        alert(
+            "Không thể xóa chuyển khoản: "+
+            error.message
+        );
+        return;
+    }
+
+    await loadAccounts(session.user.id);
+    await loadTransactions(session.user.id);
+
+    alert("✓ Đã xóa chuyển khoản.");
 }
 
 
@@ -761,7 +916,8 @@ async function deleteAccount(account){
                 count:"exact",
                 head:true
             })
-            .eq("account_id",account.id)
+            /* Tài khoản có thể là nguồn (account_id) hoặc đích (destination_account_id) */
+            .or(`account_id.eq.${account.id},destination_account_id.eq.${account.id}`)
             .eq("user_id",session.user.id);
 
     if(checkError){
@@ -777,7 +933,7 @@ async function deleteAccount(account){
         alert(
             "Không thể xóa tài khoản này vì đã có "+
             count+
-            " giao dịch.\n\n"+
+            " giao dịch (bao gồm chuyển khoản).\n\n"+
             "Bạn có thể sửa tên hoặc số dư thay vì xóa."
         );
 
@@ -807,7 +963,7 @@ async function deleteAccount(account){
         return;
     }
 
-    await loadAccounts();
+    await loadAccounts(session.user.id);
 }
 
 
@@ -815,11 +971,12 @@ async function deleteAccount(account){
    GIAO DỊCH
 ========================= */
 
-async function loadTransactions(){
+async function loadTransactions(userId){
 
     const {data,error}=await supabaseClient
         .from("transactions")
         .select("*")
+        .eq("user_id",userId)
         .order("transaction_date",{
             ascending:false
         })
@@ -843,6 +1000,8 @@ async function loadTransactions(){
 
         const amount=Number(t.amount);
 
+        /* transfer không tính vào tổng thu/chi (đúng thiết kế);
+           vẫn tính trong data.length -> "Số giao dịch" */
         if(t.type==="income"){
             totalIncome+=amount;
         }
@@ -881,6 +1040,8 @@ function renderTransactions(data){
 
     data.slice(0,20).forEach(t=>{
 
+        const isTransfer=t.type==="transfer";
+
         const row=document.createElement("div");
         row.className="transaction";
 
@@ -889,17 +1050,34 @@ function renderTransactions(data){
 
         const desc=document.createElement("div");
         desc.className="transaction-desc";
-        desc.textContent=
-            t.description||
-            t.category||
-            "Giao dịch";
+
+        if(isTransfer){
+            desc.textContent=
+                "↔ "+
+                (t.description||"Chuyển khoản");
+        }else{
+            desc.textContent=
+                t.description||
+                t.category||
+                "Giao dịch";
+        }
 
         const date=document.createElement("div");
         date.className="transaction-date";
-        date.textContent=
-            t.transaction_date+
-            " • "+
-            (t.category||"");
+
+        if(isTransfer){
+            date.textContent=
+                t.transaction_date+
+                " • "+
+                (accountNameById[t.account_id]||"?")+
+                " → "+
+                (accountNameById[t.destination_account_id]||"?");
+        }else{
+            date.textContent=
+                t.transaction_date+
+                " • "+
+                (t.category||"");
+        }
 
         left.appendChild(desc);
         left.appendChild(date);
@@ -916,15 +1094,22 @@ function renderTransactions(data){
 
         amount.className="transaction-amount";
 
-        amount.textContent=
-            (t.type==="income"?"+ ":"- ")+
-            formatMoney(Number(t.amount));
+        if(isTransfer){
+            /* Transfer hiển thị số tiền trung tính, không tính vào thu/chi */
+            amount.textContent=
+                formatMoney(Number(t.amount));
+            amount.classList.add("transfer");
+        }else{
+            amount.textContent=
+                (t.type==="income"?"+ ":"- ")+
+                formatMoney(Number(t.amount));
 
-        amount.classList.add(
-            t.type==="income"
-                ?"income"
-                :"expense"
-        );
+            amount.classList.add(
+                t.type==="income"
+                    ?"income"
+                    :"expense"
+            );
+        }
 
 
         const editBtn=document.createElement("button");
@@ -936,7 +1121,11 @@ function renderTransactions(data){
         editBtn.style.padding="7px 12px";
 
         editBtn.onclick=()=>{
-            editTransaction(t);
+            if(isTransfer){
+                editTransfer(t);
+            }else{
+                editTransaction(t);
+            }
         };
 
 
@@ -950,7 +1139,11 @@ function renderTransactions(data){
         deleteBtn.style.background="#dc3545";
 
         deleteBtn.onclick=()=>{
-            deleteTransaction(t);
+            if(isTransfer){
+                deleteTransfer(t);
+            }else{
+                deleteTransaction(t);
+            }
         };
 
 
@@ -1025,7 +1218,33 @@ document.getElementById("accountForm")
     document.getElementById("accountName").value="";
     document.getElementById("accountBalance").value="0";
 
-    await loadAccounts();
+    await loadAccounts(session.user.id);
+});
+
+
+/* =========================
+   CHUYỂN ĐỔI GIAO DIỆN FORM THEO LOẠI GIAO DỊCH
+========================= */
+
+document.getElementById("transactionType")
+.addEventListener("change",function(){
+
+    const isTransfer=this.value==="transfer";
+
+    document.getElementById("toAccountGroup")
+        .style.display=isTransfer?"flex":"none";
+
+    document.getElementById("categoryGroup")
+        .style.display=isTransfer?"none":"flex";
+
+    document.getElementById("transactionAccountLabel")
+        .textContent=isTransfer?"Từ tài khoản":"Tài khoản";
+
+    document.getElementById("transactionSubmitBtn")
+        .textContent=isTransfer?"+ Thực hiện chuyển khoản":"+ Thêm giao dịch";
+
+    document.getElementById("category")
+        .required=!isTransfer;
 });
 
 
@@ -1075,6 +1294,76 @@ document.getElementById("transactionForm")
 
         message.textContent=
             "Số tiền không hợp lệ.";
+
+        return;
+    }
+
+
+    /* ========== NHÁNH CHUYỂN KHOẢN (qua RPC, không INSERT trực tiếp) ========== */
+
+    if(type==="transfer"){
+
+        const fromId=
+            document.getElementById("transactionAccount")
+            .value||null;
+
+        const toId=
+            document.getElementById("transferToAccount")
+            .value||null;
+
+        if(!fromId||!toId){
+            message.textContent=
+                "Vui lòng chọn đủ tài khoản nguồn và tài khoản đích.";
+            return;
+        }
+
+        if(fromId===toId){
+            message.textContent=
+                "Tài khoản nguồn và tài khoản đích phải khác nhau.";
+            return;
+        }
+
+        const transferDate=
+            document.getElementById("transactionDate")
+            .value;
+
+        if(!transferDate){
+            message.textContent=
+                "Vui lòng chọn ngày.";
+            return;
+        }
+
+        const {error:rpcError}=await supabaseClient.rpc(
+            "create_transfer",
+            {
+                p_from_account_id:fromId,
+                p_to_account_id:toId,
+                p_amount:amount,
+                p_transaction_date:transferDate,
+                p_description:
+                    document.getElementById("description")
+                    .value.trim()||null
+            }
+        );
+
+        if(rpcError){
+            console.error(rpcError);
+            message.textContent=
+                "Có lỗi khi chuyển khoản: "+
+                rpcError.message;
+            return;
+        }
+
+        message.textContent=
+            "✓ Đã thực hiện chuyển khoản.";
+
+        document.getElementById("transactionAccount").value="";
+        document.getElementById("transferToAccount").value="";
+        document.getElementById("description").value="";
+        document.getElementById("amount").value="";
+
+        await loadAccounts(session.user.id);
+        await loadTransactions(session.user.id);
 
         return;
     }
@@ -1222,8 +1511,8 @@ document.getElementById("transactionForm")
     document.getElementById("amount").value="";
 
 
-    await loadAccounts();
-    await loadTransactions();
+    await loadAccounts(session.user.id);
+    await loadTransactions(session.user.id);
 });
 
 
