@@ -316,6 +316,7 @@ async function loadAccounts(){
 }
   async function deleteTransaction(transaction){
     const session=await getSession();
+
     if(!session){
         alert("Phiên đăng nhập đã hết.");
         return;
@@ -329,28 +330,78 @@ async function loadAccounts(){
 
     if(!ok) return;
 
-    const {error}=await supabaseClient
-        .from("transactions")
-        .delete()
-        .eq("id",transaction.id)
-        .eq("user_id",session.user.id);
+    if(transaction.account_id){
 
-    if(error){
-        console.error(error);
-        alert("Không thể xóa giao dịch: "+error.message);
-        return;
+        const {data:account,error:accountError}=await supabaseClient
+            .from("accounts")
+            .select("balance")
+            .eq("id",transaction.account_id)
+            .eq("user_id",session.user.id)
+            .single();
+
+        if(accountError){
+            console.error(accountError);
+            alert("Không tìm thấy tài khoản để hoàn lại số dư.");
+            return;
+        }
+
+        const currentBalance=Number(account.balance||0);
+
+        const newBalance=
+            currentBalance+
+            (transaction.type==="income"
+                ? -Number(transaction.amount)
+                : Number(transaction.amount));
+
+        const {error:updateError}=await supabaseClient
+            .from("accounts")
+            .update({balance:newBalance})
+            .eq("id",transaction.account_id)
+            .eq("user_id",session.user.id);
+
+        if(updateError){
+            console.error(updateError);
+            alert("Không thể hoàn lại số dư tài khoản.");
+            return;
+        }
+
+        const {error:deleteError}=await supabaseClient
+            .from("transactions")
+            .delete()
+            .eq("id",transaction.id)
+            .eq("user_id",session.user.id);
+
+        if(deleteError){
+            console.error(deleteError);
+
+            await supabaseClient
+                .from("accounts")
+                .update({balance:currentBalance})
+                .eq("id",transaction.account_id)
+                .eq("user_id",session.user.id);
+
+            alert("Không thể xóa giao dịch. Số dư đã được khôi phục.");
+            return;
+        }
+
+    }else{
+
+        const {error}=await supabaseClient
+            .from("transactions")
+            .delete()
+            .eq("id",transaction.id)
+            .eq("user_id",session.user.id);
+
+        if(error){
+            console.error(error);
+            alert("Có lỗi khi xóa giao dịch: "+error.message);
+            return;
+        }
     }
 
-    await loadTransactions();
     await loadAccounts();
+    await loadTransactions();
 }
-
-async function deleteTransaction(transaction){
-    const session=await getSession();
-    if(!session){
-        alert("Phiên đăng nhập đã hết.");
-        return;
-    }
 
     const ok=confirm(
         'Bạn có chắc muốn xóa giao dịch "'+
