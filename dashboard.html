@@ -345,7 +345,36 @@ async function loadAccounts(){
     await loadAccounts();
 }
 
+async function deleteTransaction(transaction){
+    const session=await getSession();
+    if(!session){
+        alert("Phiên đăng nhập đã hết.");
+        return;
+    }
 
+    const ok=confirm(
+        'Bạn có chắc muốn xóa giao dịch "'+
+        (transaction.description||transaction.category||"Giao dịch")+
+        '" không?'
+    );
+
+    if(!ok) return;
+
+    const {error}=await supabaseClient
+        .from("transactions")
+        .delete()
+        .eq("id",transaction.id)
+        .eq("user_id",session.user.id);
+
+    if(error){
+        console.error(error);
+        alert("Không thể xóa giao dịch: "+error.message);
+        return;
+    }
+
+    await loadTransactions();
+    await loadAccounts();
+}
 async function deleteAccount(account){
       const session=await getSession();
     if(!session){alert("Phiên đăng nhập đã hết.");return;}
