@@ -375,18 +375,60 @@ renderTransactions(data);
 }
 
 function renderTransactions(data){
-const list=document.getElementById("transactionList");
-if(!data.length){list.innerHTML="<div class='empty'>Chưa có giao dịch nào.</div>";return;}
-list.innerHTML="";
-data.slice(0,20).forEach(t=>{
-const row=document.createElement("div");row.className="transaction";
-const left=document.createElement("div");left.className="transaction-left";
-const desc=document.createElement("div");desc.className="transaction-desc";desc.textContent=t.description||t.category||"Giao dịch";
-const date=document.createElement("div");date.className="transaction-date";date.textContent=t.transaction_date+" • "+(t.category||"");
-left.appendChild(desc);left.appendChild(date);
-const amount=document.createElement("div");amount.className="transaction-amount";amount.textContent=(t.type==="income"?"+ ":"- ")+formatMoney(Number(t.amount));amount.classList.add(t.type==="income"?"income":"expense");
-row.appendChild(left);row.appendChild(amount);list.appendChild(row);
-});
+    const list=document.getElementById("transactionList");
+
+    if(!data.length){
+        list.innerHTML="<div class='empty'>Chưa có giao dịch nào.</div>";
+        return;
+    }
+
+    list.innerHTML="";
+
+    data.slice(0,20).forEach(t=>{
+        const row=document.createElement("div");
+        row.className="transaction";
+
+        const left=document.createElement("div");
+        left.className="transaction-left";
+
+        const desc=document.createElement("div");
+        desc.className="transaction-desc";
+        desc.textContent=t.description||t.category||"Giao dịch";
+
+        const date=document.createElement("div");
+        date.className="transaction-date";
+        date.textContent=t.transaction_date+" • "+(t.category||"");
+
+        left.appendChild(desc);
+        left.appendChild(date);
+
+        const right=document.createElement("div");
+        right.style.display="flex";
+        right.style.alignItems="center";
+        right.style.gap="10px";
+
+        const amount=document.createElement("div");
+        amount.className="transaction-amount";
+        amount.textContent=(t.type==="income"?"+ ":"- ")+formatMoney(Number(t.amount));
+        amount.classList.add(t.type==="income"?"income":"expense");
+
+        const deleteBtn=document.createElement("button");
+        deleteBtn.type="button";
+        deleteBtn.textContent="🗑️ Xóa";
+        deleteBtn.className="add-btn";
+        deleteBtn.style.marginTop="0";
+        deleteBtn.style.padding="7px 12px";
+        deleteBtn.style.background="#dc3545";
+        deleteBtn.onclick=()=>deleteTransaction(t);
+
+        right.appendChild(amount);
+        right.appendChild(deleteBtn);
+
+        row.appendChild(left);
+        row.appendChild(right);
+
+        list.appendChild(row);
+    });
 }
 
 document.getElementById("accountForm").addEventListener("submit",async function(e){
