@@ -33,6 +33,7 @@ button.danger{background:#dc3545}
 <button onclick="qaDeleteNwItem('QA Credit+')">🗑️ Xóa item "QA Credit+"</button>
 <button class="danger" onclick="qaDeleteAccount('QA Credit Dương')">🗑️ Xóa account "QA Credit Dương"</button>
 <button onclick="qaDeleteTxByDesc('QA income NW10')">🗑️ Xóa giao dịch "QA income NW10"</button>
+<button class="danger" onclick="qaNukeQA()">🧹 Xóa MỌI thứ tên QA*</button>
 <button class="danger" onclick="qaCleanup()">🧹 Cleanup toàn bộ QA</button>
 </div>
 <div id="log"></div>
@@ -99,6 +100,17 @@ async function qaDeleteTxByDesc(desc){
 async function qaDeleteAccount(name){
     const {error}=await supabaseClient.from("accounts").delete().eq("user_id",uid).eq("name",name);
     log(error?("LỖI xóa account "+name+": "+error.message):("Đã xóa account "+name));
+}
+async function qaNukeQA(){
+    log("--- xóa mọi thứ tên QA* ---");
+    let r=await supabaseClient.from("net_worth_items").delete().eq("user_id",uid).ilike("name","QA%");
+    log(r.error?("LỖI items: "+r.error.message):"Đã xóa items QA*");
+    r=await supabaseClient.from("transactions").delete().eq("user_id",uid).ilike("description","%QA%");
+    log(r.error?("LỖI txs: "+r.error.message):"Đã xóa transactions QA*");
+    r=await supabaseClient.from("accounts").delete().eq("user_id",uid).ilike("name","QA%");
+    log(r.error?("LỖI accounts: "+r.error.message):"Đã xóa accounts QA*");
+    await qaSetVCB(6000000);
+    log("--- xong ---");
 }
 async function qaCleanup(){
     log("--- cleanup ---");
