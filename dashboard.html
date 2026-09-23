@@ -2232,8 +2232,9 @@ document.getElementById("transactionType")
     document.getElementById("transactionSubmitBtn")
         .textContent=isTransfer?"+ Thực hiện chuyển khoản":"+ Thêm giao dịch";
 
-    document.getElementById("category")
-        .required=!isTransfer;
+    /* T3 fix triet de: KHONG dung native required cho category.
+       Validation "Vui lòng chọn danh mục." do JS dam nhiem (submit handler);
+       DB CHECK ((type='transfer')=(category_id IS NULL)) la backstop. */
 
     refreshCategoryFormOptions();
 });
