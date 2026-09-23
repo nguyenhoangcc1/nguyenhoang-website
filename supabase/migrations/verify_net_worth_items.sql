@@ -38,3 +38,15 @@ where conrelid = 'public.accounts'::regclass
 select conname from pg_constraint
 where conrelid = 'public.net_worth_items'::regclass
   and contype = 'c';
+
+-- 9. Table privileges cho role authenticated (phải có đủ 4 dòng:
+--    DELETE, INSERT, SELECT, UPDATE). Thiếu GRANT là nguyên nhân của
+--    lỗi "permission denied for table net_worth_items" dù RLS đúng.
+select
+  grantee,
+  privilege_type
+from information_schema.role_table_grants
+where table_schema = 'public'
+  and table_name = 'net_worth_items'
+  and grantee = 'authenticated'
+order by privilege_type;
