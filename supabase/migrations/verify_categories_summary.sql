@@ -82,13 +82,15 @@ select 'V6_fks_restrict',
                    and pg_get_constraintdef(oid) like '%category_id%')))
 union all
 select 'V7_triggers',
-       (select count(*) = 2
+       -- LƯU Ý: information_schema.triggers trả 1 dòng cho mỗi EVENT của trigger,
+       -- nên trigger BEFORE INSERT OR UPDATE đếm thành 2 dòng -> phải count distinct.
+       (select count(distinct trigger_name) = 2
         from information_schema.triggers
         where event_object_schema = 'public'
           and event_object_table = 'categories'
           and trigger_name in ('trg_categories_hierarchy_check',
                                'trg_categories_updated_at')),
-       (select string_agg(trigger_name, ',' order by trigger_name)
+       (select string_agg(distinct trigger_name, ',' order by trigger_name)
         from information_schema.triggers
         where event_object_schema = 'public'
           and event_object_table = 'categories')
