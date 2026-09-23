@@ -62,6 +62,17 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 .stats-dot{width:12px;height:12px;border-radius:3px;display:inline-block}
 .nw-actions{display:flex;gap:8px;margin-top:8px}
 .nw-actions button{padding:6px 12px;font-size:13px}
+/* ============ CATEGORIES V1 ============ */
+.catstat-row{display:flex;justify-content:space-between;align-items:center;padding:8px 4px;border-bottom:1px solid #f1f5f9;font-size:14px}
+.catstat-row:last-child{border-bottom:none}
+.catstat-name{color:#0f172a}
+.catstat-amount{font-weight:700;white-space:nowrap;margin-left:12px}
+.catstat-group{font-size:13px;font-weight:700;color:#475569;margin:10px 0 2px}
+.catmodal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:center;justify-content:center;z-index:9999}
+.catmodal-box{background:#fff;border-radius:12px;padding:20px;min-width:300px;max-width:92vw;box-shadow:0 10px 30px rgba(0,0,0,.2)}
+.catmodal-box h3{margin:0 0 12px;font-size:16px}
+.catmodal-box select{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font-size:14px;margin-bottom:14px}
+.catmodal-actions{display:flex;gap:8px;justify-content:flex-end}
 </style>
 </head>
 <body>
@@ -117,6 +128,8 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <div class="card"><div class="card-title">Số giao dịch</div><div class="card-value" id="statsCount">0</div></div>
 </div>
 <div id="statsChart" class="stats-chart"></div>
+<h3 class="nw-section-title" style="margin-top:18px;">Theo danh mục</h3>
+<div id="categoryStats"><div class="empty">Chưa có dữ liệu.</div></div>
 </div>
 <div class="section">
 <h2>🏦 Tài khoản của tôi</h2>
@@ -232,7 +245,9 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 </div>
 <div class="form-group" id="categoryGroup">
 <label for="category">Danh mục</label>
-<input type="text" id="category" placeholder="Ví dụ: Ăn uống" required>
+<select id="category">
+<option value="">-- Chọn danh mục --</option>
+</select>
 </div>
 <div class="form-group">
 <label for="amount">Số tiền (VNĐ)</label>
@@ -246,6 +261,40 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <button class="add-btn" type="submit" id="transactionSubmitBtn">+ Thêm giao dịch</button>
 <div class="message" id="formMessage"></div>
 </form>
+</div>
+
+<div class="section">
+<h2>🗂️ Danh mục thu / chi</h2>
+<button class="add-btn" type="button" id="catAddBtn" style="margin-top:0;">+ Thêm danh mục</button>
+<form id="catForm" style="display:none;margin-top:16px;">
+<div class="form-grid">
+<div class="form-group">
+<label for="catName">Tên danh mục</label>
+<input id="catName" placeholder="Ví dụ: Ăn sáng" maxlength="100">
+</div>
+<div class="form-group">
+<label for="catType">Loại</label>
+<select id="catType">
+<option value="expense">Chi tiêu</option>
+<option value="income">Thu nhập</option>
+</select>
+</div>
+<div class="form-group">
+<label for="catParent">Danh mục cha (không bắt buộc)</label>
+<select id="catParent">
+<option value="">-- Không có (danh mục gốc) --</option>
+</select>
+</div>
+</div>
+<div class="message" id="catMessage"></div>
+<button class="add-btn" type="submit" id="catSubmitBtn">+ Thêm danh mục</button>
+<button class="add-btn" type="button" id="catCancelBtn" style="background:#64748b;margin-left:8px;">Hủy</button>
+<div class="message" id="catFormNote" style="color:#64748b;">Danh mục cha chỉ được 1 cấp: danh mục con không thể có con.</div>
+</form>
+<h3 class="nw-section-title">Chi tiêu</h3>
+<div id="catExpenseList"><div class="empty">Chưa có danh mục nào.</div></div>
+<h3 class="nw-section-title">Thu nhập</h3>
+<div id="catIncomeList"><div class="empty">Chưa có danh mục nào.</div></div>
 </div>
 
 <div class="section">
@@ -264,6 +313,12 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <div class="form-group">
 <label for="filterAccount">Tài khoản</label>
 <select id="filterAccount">
+<option value="all">Tất cả</option>
+</select>
+</div>
+<div class="form-group">
+<label for="filterCategory">Danh mục</label>
+<select id="filterCategory">
 <option value="all">Tất cả</option>
 </select>
 </div>
@@ -330,11 +385,225 @@ let displayedCount=FILTER_PAGE_SIZE;
 const currentFilters={
     type:"all",
     accountId:"all",
+    categoryId:"all",
     datePreset:"all",
     startDate:"",
     endDate:"",
     search:""
 };
+
+/* ================= DANH MỤC (CATEGORIES V1) =================
+   DB LOCKED: frontend chỉ đọc/ghi qua PostgREST trên bảng categories
+   đã khóa. Không đụng schema/constraint/RLS/trigger/RPC.
+   Net Worth inclusion: INDIRECT ONLY — không chạm logic net worth. */
+let categoriesCache=[];
+
+/* Default categories đã duyệt — toàn bộ root, lazy-seed ở frontend */
+const DEFAULT_CATEGORIES=[
+    {name:"Ăn uống",type:"expense"},
+    {name:"Đi lại",type:"expense"},
+    {name:"Nhà cửa",type:"expense"},
+    {name:"Mua sắm",type:"expense"},
+    {name:"Giáo dục",type:"expense"},
+    {name:"Y tế",type:"expense"},
+    {name:"Giải trí",type:"expense"},
+    {name:"Khác",type:"expense"},
+    {name:"Lương",type:"income"},
+    {name:"Thưởng",type:"income"},
+    {name:"Thu nhập khác",type:"income"}
+];
+
+/* Lazy + idempotent seed: chỉ seed khi user chưa có category nào và
+   chưa từng seed trên trình duyệt này (tránh seed lại nếu user
+   chủ động xóa hết danh mục). */
+async function ensureDefaultCategories(userId){
+    const flag="cat_seed_v1_"+userId;
+    if(localStorage.getItem(flag)){ return; }
+    const {count,error}=await supabaseClient
+        .from("categories")
+        .select("id",{count:"exact",head:true})
+        .eq("user_id",userId);
+    if(error){ console.error(error); return; }
+    if((count||0)>0){ localStorage.setItem(flag,"1"); return; }
+    const rows=DEFAULT_CATEGORIES.map(c=>({
+        user_id:userId,
+        name:c.name,
+        type:c.type,
+        parent_id:null
+    }));
+    const {error:insError}=await supabaseClient
+        .from("categories")
+        .insert(rows);
+    if(insError){ console.error(insError); return; }
+    localStorage.setItem(flag,"1");
+}
+
+async function loadCategories(userId){
+    const {data,error}=await supabaseClient
+        .from("categories")
+        .select("id,name,type,parent_id")
+        .eq("user_id",userId)
+        .order("type",{ascending:true})
+        .order("name",{ascending:true});
+    if(error){
+        console.error(error);
+        categoriesCache=[];
+    }else{
+        categoriesCache=data||[];
+    }
+    refreshCategoryFormOptions();
+    refreshFilterCategoryOptions();
+    renderCategoryManager();
+}
+
+function categoryById(id){
+    return categoriesCache.find(c=>c.id===id)||null;
+}
+function categoryNameById(id){
+    const c=id&&categoryById(id);
+    return c?c.name:"";
+}
+/* Label hiển thị: "Ăn uống › Ăn sáng" cho danh mục con */
+function categoryLabel(id){
+    const c=id&&categoryById(id);
+    if(!c){ return ""; }
+    if(c.parent_id){
+        const p=categoryById(c.parent_id);
+        return (p?p.name+" › ":"")+c.name;
+    }
+    return c.name;
+}
+/* Id của node + toàn bộ descendants — filter theo cha bao gồm con */
+function categorySubtreeIds(id){
+    const ids=[id];
+    let added=true;
+    while(added){
+        added=false;
+        categoriesCache.forEach(c=>{
+            if(c.parent_id&&
+               ids.indexOf(c.parent_id)>=0&&
+               ids.indexOf(c.id)<0){
+                ids.push(c.id);
+                added=true;
+            }
+        });
+    }
+    return ids;
+}
+function categoryRoots(type){
+    return categoriesCache.filter(
+        c=>c.type===type&&!c.parent_id
+    );
+}
+function categoryChildrenList(parentId){
+    return categoriesCache.filter(
+        c=>c.parent_id===parentId
+    );
+}
+
+/* Dựng options cho dropdown danh mục.
+   type="expense"|"income": chỉ hiện loại đó (form).
+   includeAll=true: hiện cả 2 loại có optgroup (filter). */
+function buildCategoryOptions(selectEl,type,includeAll){
+    selectEl.innerHTML="";
+    const ph=document.createElement("option");
+    ph.value=includeAll?"all":"";
+    ph.textContent=
+        includeAll?"Tất cả":"-- Chọn danh mục --";
+    selectEl.appendChild(ph);
+    const mkGroup=(t,label)=>{
+        const g=document.createElement("optgroup");
+        g.label=label;
+        categoryRoots(t).forEach(root=>{
+            const o=document.createElement("option");
+            o.value=root.id;
+            o.textContent=root.name;
+            g.appendChild(o);
+            categoryChildrenList(root.id).forEach(ch=>{
+                const co=document.createElement("option");
+                co.value=ch.id;
+                co.textContent="— "+ch.name;
+                g.appendChild(co);
+            });
+        });
+        if(g.children.length){
+            selectEl.appendChild(g);
+        }
+    };
+    if(includeAll){
+        mkGroup("expense","Chi tiêu");
+        mkGroup("income","Thu nhập");
+    }else if(type==="expense"||type==="income"){
+        mkGroup(type,type==="expense"?"Chi tiêu":"Thu nhập");
+    }
+}
+
+function refreshCategoryFormOptions(){
+    const type=
+        document.getElementById("transactionType").value;
+    buildCategoryOptions(
+        document.getElementById("category"),
+        type,
+        false
+    );
+}
+
+function refreshFilterCategoryOptions(){
+    const el=document.getElementById("filterCategory");
+    const cur=el.value||"all";
+    buildCategoryOptions(el,null,true);
+    el.value=
+        categoriesCache.some(c=>c.id===cur)?cur:"all";
+}
+
+/* Modal chọn danh mục — dùng cho luồng Sửa (thay prompt).
+   Resolve category_id đã chọn, hoặc null khi hủy. */
+function pickCategoryModal(type,currentId){
+    return new Promise(resolve=>{
+        const overlay=document.createElement("div");
+        overlay.className="catmodal-overlay";
+        const boxEl=document.createElement("div");
+        boxEl.className="catmodal-box";
+        const title=document.createElement("h3");
+        title.textContent=
+            "Chọn danh mục ("+
+            (type==="income"?"Thu nhập":"Chi tiêu")+")";
+        const sel=document.createElement("select");
+        buildCategoryOptions(sel,type,false);
+        const cur=currentId&&categoryById(currentId);
+        if(cur&&cur.type===type){
+            sel.value=currentId;
+        }
+        const actions=document.createElement("div");
+        actions.className="catmodal-actions";
+        const okBtn=document.createElement("button");
+        okBtn.className="add-btn";
+        okBtn.type="button";
+        okBtn.textContent="✓ Chọn";
+        const cancelBtn=document.createElement("button");
+        cancelBtn.className="add-btn";
+        cancelBtn.type="button";
+        cancelBtn.style.background="#64748b";
+        cancelBtn.textContent="Hủy";
+        const done=v=>{
+            document.body.removeChild(overlay);
+            resolve(v);
+        };
+        okBtn.onclick=()=>done(sel.value||null);
+        cancelBtn.onclick=()=>done(null);
+        overlay.onclick=e=>{
+            if(e.target===overlay){ done(null); }
+        };
+        actions.appendChild(okBtn);
+        actions.appendChild(cancelBtn);
+        boxEl.appendChild(title);
+        boxEl.appendChild(sel);
+        boxEl.appendChild(actions);
+        overlay.appendChild(boxEl);
+        document.body.appendChild(overlay);
+        sel.focus();
+    });
+}
 
 function formatMoney(amount){
     return new Intl.NumberFormat("vi-VN").format(amount)+" đ";
@@ -369,6 +638,8 @@ async function loadDashboard(){
     document.getElementById("transactionDate").value=todayStr();
 
     await loadAccounts(session.user.id);
+    await ensureDefaultCategories(session.user.id);
+    await loadCategories(session.user.id);
     await loadTransactions(session.user.id);
     await loadNetWorth(session.user.id);
 
@@ -648,12 +919,13 @@ async function editAccount(account){
     }
 
 
-    const newCategory=prompt(
-        "Danh mục:",
-        transaction.category||""
+    /* Categories V1: chọn danh mục qua dropdown, không còn prompt */
+    const newCategoryId=await pickCategoryModal(
+        type,
+        transaction.category_id||""
     );
 
-    if(newCategory===null) return;
+    if(!newCategoryId) return;
 
 
     const newDescription=prompt(
@@ -738,7 +1010,7 @@ async function editAccount(account){
                 .update({
                     type:type,
                     amount:amount,
-                    category:newCategory.trim(),
+                    category_id:newCategoryId,
                     description:newDescription.trim()
                 })
                 .eq("id",transaction.id)
@@ -784,7 +1056,7 @@ async function editAccount(account){
                 .update({
                     type:oldType,
                     amount:oldAmount,
-                    category:transaction.category,
+                    category_id:transaction.category_id,
                     description:transaction.description
                 })
                 .eq("id",transaction.id)
@@ -810,7 +1082,7 @@ async function editAccount(account){
             .update({
                 type:type,
                 amount:amount,
-                category:newCategory.trim(),
+                category_id:newCategoryId,
                 description:newDescription.trim()
             })
             .eq("id",transaction.id)
@@ -853,6 +1125,7 @@ async function deleteTransaction(transaction){
     const ok=confirm(
         'Bạn có chắc muốn xóa giao dịch "'+
         (transaction.description||
+         categoryLabel(transaction.category_id)||
          transaction.category||
          "Giao dịch")+
         '" không?'
@@ -1239,6 +1512,8 @@ async function loadTransactions(userId){
     allTransactions=all;
     displayedCount=FILTER_PAGE_SIZE;
     applyFiltersAndRender();
+    /* Đếm số giao dịch/danh mục trong manager cần allTransactions */
+    renderCategoryManager();
 }
 
 
@@ -1313,6 +1588,7 @@ function isFiltering(){
        không tính là "đang lọc" — badge chỉ phản ánh type/account/search */
     return currentFilters.type!=="all"||
         currentFilters.accountId!=="all"||
+        currentFilters.categoryId!=="all"||
         currentFilters.search!=="";
 }
 
@@ -1337,6 +1613,16 @@ function applyFilters(){
             }
         }
 
+        /* 2b. Danh mục — chọn cha bao gồm cả con; transfer
+           (category_id NULL) tự động bị loại khỏi danh sách */
+        if(currentFilters.categoryId!=="all"){
+            const allowed=
+                categorySubtreeIds(currentFilters.categoryId);
+            if(allowed.indexOf(t.category_id)<0){
+                return false;
+            }
+        }
+
         /* 3. Khoảng ngày (chuỗi YYYY-MM-DD so sánh trực tiếp được) */
         if(from&&t.transaction_date<from){
             return false;
@@ -1345,8 +1631,11 @@ function applyFilters(){
             return false;
         }
 
-        /* 4. Tìm kiếm theo nội dung */
-        if(q&&!normSearch(t.description||"").includes(q)){
+        /* 4. Tìm kiếm theo nội dung + tên danh mục (resolve từ category_id) */
+        if(q&&!normSearch(
+            (t.description||"")+" "+
+            categoryLabel(t.category_id)
+        ).includes(q)){
             return false;
         }
 
@@ -1604,6 +1893,7 @@ function applyFiltersAndRender(){
     const filtered=applyFilters();
     updateStats(filtered);
     renderStats(filtered);
+    renderCategoryStats(filtered);
     renderTransactions(filtered);
     updateFilterBadge();
 }
@@ -1611,10 +1901,12 @@ function applyFiltersAndRender(){
 function clearFilters(){
     currentFilters.type="all";
     currentFilters.accountId="all";
+    currentFilters.categoryId="all";
     currentFilters.search="";
 
     document.getElementById("filterType").value="all";
     document.getElementById("filterAccount").value="all";
+    document.getElementById("filterCategory").value="all";
     document.getElementById("filterSearch").value="";
     document.getElementById("filterError").textContent="";
 
@@ -1655,6 +1947,7 @@ function readFiltersFromUI(){
 
     currentFilters.type=document.getElementById("filterType").value;
     currentFilters.accountId=document.getElementById("filterAccount").value;
+    currentFilters.categoryId=document.getElementById("filterCategory").value;
     currentFilters.datePreset=preset;
     currentFilters.search=document.getElementById("filterSearch").value;
 
@@ -1674,6 +1967,8 @@ function initTransactionFilters(){
     document.getElementById("filterType")
         .addEventListener("change",onFilterChanged);
     document.getElementById("filterAccount")
+        .addEventListener("change",onFilterChanged);
+    document.getElementById("filterCategory")
         .addEventListener("change",onFilterChanged);
     document.getElementById("filterDatePreset")
         .addEventListener("change",()=>{
@@ -1738,6 +2033,7 @@ function renderTransactions(data){
         }else{
             desc.textContent=
                 t.description||
+                categoryLabel(t.category_id)||
                 t.category||
                 "Giao dịch";
         }
@@ -1756,7 +2052,9 @@ function renderTransactions(data){
             date.textContent=
                 t.transaction_date+
                 " • "+
-                (t.category||"");
+                (categoryLabel(t.category_id)||
+                 t.category||
+                 "");
         }
 
         left.appendChild(desc);
@@ -1934,8 +2232,11 @@ document.getElementById("transactionType")
     document.getElementById("transactionSubmitBtn")
         .textContent=isTransfer?"+ Thực hiện chuyển khoản":"+ Thêm giao dịch";
 
-    document.getElementById("category")
-        .required=!isTransfer;
+    /* T3 fix triet de: KHONG dung native required cho category.
+       Validation "Vui lòng chọn danh mục." do JS dam nhiem (submit handler);
+       DB CHECK ((type='transfer')=(category_id IS NULL)) la backstop. */
+
+    refreshCategoryFormOptions();
 });
 
 
@@ -1985,6 +2286,19 @@ document.getElementById("transactionForm")
 
         message.textContent=
             "Số tiền không hợp lệ.";
+
+        return;
+    }
+
+
+    /* Categories V1: income/expense bắt buộc có category_id hợp lệ */
+    const categoryId=
+        document.getElementById("category").value||null;
+
+    if(type!=="transfer"&&!categoryId){
+
+        message.textContent=
+            "Vui lòng chọn danh mục.";
 
         return;
     }
@@ -2072,9 +2386,9 @@ document.getElementById("transactionForm")
 
         type:type,
 
-        category:
-            document.getElementById("category")
-            .value.trim(),
+        /* Categories V1: legacy `category` (text) đóng băng — không ghi mới.
+           Source chính là category_id. */
+        category_id:categoryId,
 
         description:
             document.getElementById("description")
@@ -2204,6 +2518,416 @@ document.getElementById("transactionForm")
 
     await loadAccounts(session.user.id);
     await loadTransactions(session.user.id);
+});
+
+
+/* ================= QUẢN LÝ DANH MỤC (CATEGORIES V1) ================= */
+let catEditingId=null;
+
+/* Số giao dịch dùng node này (bao gồm descendants) */
+function catUsageCount(id){
+    const ids=categorySubtreeIds(id);
+    return allTransactions.filter(
+        t=>ids.indexOf(t.category_id)>=0
+    ).length;
+}
+
+function renderCategoryManager(){
+    renderCatList(
+        "expense",
+        document.getElementById("catExpenseList")
+    );
+    renderCatList(
+        "income",
+        document.getElementById("catIncomeList")
+    );
+    /* Refresh parent options nếu form đang mở ở chế độ thêm mới */
+    const form=document.getElementById("catForm");
+    if(form&&form.style.display!=="none"&&!catEditingId){
+        refreshCatParentOptions(
+            document.getElementById("catType").value,
+            "",
+            null
+        );
+    }
+}
+
+function renderCatList(type,container){
+    if(!container){ return; }
+    const roots=categoryRoots(type);
+    if(!roots.length){
+        container.innerHTML=
+            "<div class='empty'>Chưa có danh mục nào.</div>";
+        return;
+    }
+    container.innerHTML="";
+    roots.forEach(root=>{
+        container.appendChild(catRow(root,0));
+        categoryChildrenList(root.id).forEach(ch=>{
+            container.appendChild(catRow(ch,1));
+        });
+    });
+}
+
+function catRow(cat,level){
+    const row=document.createElement("div");
+    row.className="transaction";
+
+    const left=document.createElement("div");
+    left.className="transaction-left";
+
+    const nameEl=document.createElement("div");
+    nameEl.className="transaction-desc";
+    nameEl.style.paddingLeft=(level*20)+"px";
+    nameEl.textContent=
+        (level?"└ ":"")+
+        cat.name+
+        " • "+catUsageCount(cat.id)+" giao dịch";
+
+    left.appendChild(nameEl);
+    row.appendChild(left);
+
+    const right=document.createElement("div");
+    right.style.display="flex";
+    right.style.alignItems="center";
+    right.style.gap="8px";
+
+    const editBtn=document.createElement("button");
+    editBtn.type="button";
+    editBtn.textContent="✏️ Sửa";
+    editBtn.className="add-btn";
+    editBtn.style.marginTop="0";
+    editBtn.style.padding="7px 12px";
+    editBtn.onclick=()=>catEdit(cat.id);
+
+    const delBtn=document.createElement("button");
+    delBtn.type="button";
+    delBtn.textContent="🗑️ Xóa";
+    delBtn.className="add-btn";
+    delBtn.style.marginTop="0";
+    delBtn.style.padding="7px 12px";
+    delBtn.style.background="#dc3545";
+    delBtn.onclick=()=>catDelete(cat.id);
+
+    right.appendChild(editBtn);
+    right.appendChild(delBtn);
+    row.appendChild(right);
+
+    return row;
+}
+
+function refreshCatParentOptions(type,selectedId,excludeId){
+    const el=document.getElementById("catParent");
+    el.innerHTML=
+        '<option value="">-- Không có (danh mục gốc) --</option>';
+    categoryRoots(type).forEach(r=>{
+        if(excludeId&&r.id===excludeId){ return; }
+        const o=document.createElement("option");
+        o.value=r.id;
+        o.textContent=r.name;
+        el.appendChild(o);
+    });
+    el.value=selectedId||"";
+}
+
+function openCatForm(){
+    catEditingId=null;
+    document.getElementById("catName").value="";
+    document.getElementById("catType").value="expense";
+    refreshCatParentOptions("expense","",null);
+    document.getElementById("catMessage").textContent="";
+    document.getElementById("catSubmitBtn").textContent=
+        "+ Thêm danh mục";
+    document.getElementById("catForm").style.display="block";
+    document.getElementById("catName").focus();
+}
+
+function closeCatForm(){
+    catEditingId=null;
+    document.getElementById("catForm").style.display="none";
+    document.getElementById("catMessage").textContent="";
+}
+
+function catEdit(id){
+    const cat=categoryById(id);
+    if(!cat){ return; }
+    catEditingId=id;
+    document.getElementById("catName").value=cat.name;
+    document.getElementById("catType").value=cat.type;
+    refreshCatParentOptions(cat.type,cat.parent_id||"",id);
+    document.getElementById("catMessage").textContent="";
+    document.getElementById("catSubmitBtn").textContent=
+        "✓ Lưu thay đổi";
+    document.getElementById("catForm").style.display="block";
+    document.getElementById("catName").focus();
+}
+
+async function catDelete(id){
+    const cat=categoryById(id);
+    if(!cat){ return; }
+
+    /* Quy tắc delete/protection: không xóa cha còn con */
+    const kids=categoryChildrenList(id);
+    if(kids.length){
+        alert(
+            "Không thể xóa \""+cat.name+
+            "\": còn "+kids.length+
+            " danh mục con. Hãy xóa hoặc di chuyển chúng trước."
+        );
+        return;
+    }
+
+    /* Không xóa danh mục đang được giao dịch sử dụng */
+    const used=catUsageCount(id);
+    if(used>0){
+        alert(
+            "Không thể xóa \""+cat.name+
+            "\": đang được dùng bởi "+used+" giao dịch."
+        );
+        return;
+    }
+
+    const ok=confirm(
+        'Bạn có chắc muốn xóa danh mục "'+cat.name+'"?'
+    );
+    if(!ok){ return; }
+
+    const session=await getSession();
+    if(!session){
+        alert("Phiên đăng nhập đã hết.");
+        return;
+    }
+
+    const {error}=await supabaseClient
+        .from("categories")
+        .delete()
+        .eq("id",id)
+        .eq("user_id",session.user.id);
+
+    if(error){
+        console.error(error);
+        alert("Không thể xóa: "+error.message);
+        return;
+    }
+
+    if(catEditingId===id){ closeCatForm(); }
+    await loadCategories(session.user.id);
+    alert("✓ Đã xóa danh mục.");
+}
+
+/* Thống kê theo danh mục (§11):
+   mỗi node render đúng 1 lần, không double-count;
+   total của cha = trực tiếp + toàn bộ descendants. */
+function renderCategoryStats(filtered){
+    const box=document.getElementById("categoryStats");
+    if(!box){ return; }
+
+    const direct={};
+    let uncat=0;
+    let uncatCount=0;
+
+    filtered.forEach(t=>{
+        if(t.type!=="income"&&t.type!=="expense"){ return; }
+        const a=Number(t.amount)||0;
+        if(t.category_id&&categoryById(t.category_id)){
+            direct[t.category_id]=(direct[t.category_id]||0)+a;
+        }else{
+            uncat+=a;
+            uncatCount++;
+        }
+    });
+
+    const total={};
+    const calc=id=>{
+        if(total[id]!==undefined){ return total[id]; }
+        let s=direct[id]||0;
+        categoryChildrenList(id).forEach(ch=>{
+            s+=calc(ch.id);
+        });
+        total[id]=s;
+        return s;
+    };
+
+    box.innerHTML="";
+    let has=false;
+
+    [["expense","Chi tiêu"],["income","Thu nhập"]].forEach(
+        ([type,label])=>{
+            const roots=categoryRoots(type).filter(
+                r=>calc(r.id)>0
+            );
+            if(!roots.length){ return; }
+            has=true;
+            const g=document.createElement("div");
+            g.className="catstat-group";
+            g.textContent=label;
+            box.appendChild(g);
+            roots.forEach(r=>{
+                box.appendChild(
+                    catStatRow(r.name,total[r.id],type,0)
+                );
+                categoryChildrenList(r.id).forEach(ch=>{
+                    const v=direct[ch.id]||0;
+                    if(v>0){
+                        box.appendChild(
+                            catStatRow(ch.name,v,type,1)
+                        );
+                    }
+                });
+            });
+        }
+    );
+
+    if(uncatCount>0){
+        has=true;
+        const g=document.createElement("div");
+        g.className="catstat-group";
+        g.textContent="Chưa phân loại";
+        box.appendChild(g);
+        const row=document.createElement("div");
+        row.className="catstat-row";
+        const nm=document.createElement("div");
+        nm.className="catstat-name";
+        nm.textContent=uncatCount+" giao dịch";
+        const am=document.createElement("div");
+        am.className="catstat-amount";
+        am.textContent=formatMoney(uncat);
+        row.appendChild(nm);
+        row.appendChild(am);
+        box.appendChild(row);
+    }
+
+    if(!has){
+        box.innerHTML=
+            "<div class='empty'>Chưa có dữ liệu.</div>";
+    }
+}
+
+function catStatRow(labelText,amount,type,level){
+    const row=document.createElement("div");
+    row.className="catstat-row";
+    const nm=document.createElement("div");
+    nm.className="catstat-name";
+    nm.style.paddingLeft=(level*18)+"px";
+    nm.style.fontWeight=level===0?"700":"400";
+    nm.textContent=labelText;
+    const am=document.createElement("div");
+    am.className="catstat-amount "+type;
+    am.textContent=
+        (type==="income"?"+ ":"- ")+formatMoney(amount);
+    row.appendChild(nm);
+    row.appendChild(am);
+    return row;
+}
+
+/* ============ WIRING: FORM DANH MỤC ============ */
+document.getElementById("catAddBtn")
+.addEventListener("click",openCatForm);
+
+document.getElementById("catCancelBtn")
+.addEventListener("click",closeCatForm);
+
+document.getElementById("catType")
+.addEventListener("change",function(){
+    refreshCatParentOptions(this.value,"",catEditingId);
+});
+
+document.getElementById("catForm")
+.addEventListener("submit",async function(e){
+    e.preventDefault();
+
+    const msg=document.getElementById("catMessage");
+    msg.textContent="";
+
+    const session=await getSession();
+    if(!session){
+        msg.textContent="Phiên đăng nhập đã hết.";
+        return;
+    }
+
+    const name=
+        document.getElementById("catName").value.trim();
+    const type=document.getElementById("catType").value;
+    const parentId=
+        document.getElementById("catParent").value||null;
+
+    /* §14: tên 1–100 ký tự */
+    if(!name||name.length>100){
+        msg.textContent="Tên danh mục từ 1–100 ký tự.";
+        return;
+    }
+
+    /* §14: unique theo (user,type,parent) — kiểm tra thân thiện phía client */
+    const dup=categoriesCache.some(c=>
+        c.id!==catEditingId&&
+        c.type===type&&
+        ((c.parent_id||null)===(parentId||null))&&
+        c.name.toLowerCase()===name.toLowerCase()
+    );
+    if(dup){
+        msg.textContent="Tên này đã tồn tại trong cùng nhóm.";
+        return;
+    }
+
+    /* Parent phải là root cùng type (giữ đúng 1 cấp) */
+    if(parentId){
+        const p=categoryById(parentId);
+        if(!p||p.parent_id||p.type!==type){
+            msg.textContent=
+                "Danh mục cha không hợp lệ (chỉ 1 cấp, cùng loại).";
+            return;
+        }
+    }
+
+    /* Không chuyển node đang có con thành con (sẽ tạo 2 cấp),
+       không đổi loại node đang có con */
+    if(catEditingId){
+        const self=categoryById(catEditingId);
+        const kids=categoryChildrenList(catEditingId);
+        if(kids.length&&parentId){
+            msg.textContent=
+                "Danh mục đang có con không thể chuyển thành danh mục con.";
+            return;
+        }
+        if(kids.length&&self&&self.type!==type){
+            msg.textContent=
+                "Danh mục đang có con không thể đổi loại.";
+            return;
+        }
+    }
+
+    msg.textContent="Đang lưu...";
+
+    let error;
+    if(catEditingId){
+        ({error}=await supabaseClient
+            .from("categories")
+            .update({
+                name:name,
+                type:type,
+                parent_id:parentId
+            })
+            .eq("id",catEditingId)
+            .eq("user_id",session.user.id));
+    }else{
+        ({error}=await supabaseClient
+            .from("categories")
+            .insert({
+                user_id:session.user.id,
+                name:name,
+                type:type,
+                parent_id:parentId
+            }));
+    }
+
+    if(error){
+        console.error(error);
+        msg.textContent="Không thể lưu: "+error.message;
+        return;
+    }
+
+    closeCatForm();
+    await loadCategories(session.user.id);
 });
 
 
