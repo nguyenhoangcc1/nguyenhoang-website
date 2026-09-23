@@ -48,8 +48,8 @@ Pattern toggle đã có sẵn và sẽ tái dùng: button `onclick="...style.dis
 ```
 <header class="header">
   .logo "Nguyên HOÀNG"
-  <nav class="dash-nav">          ← MỚI (UX-P0)
-    Tổng quan → #overview | Giao dịch → #action | Tài khoản → #accounts
+  <nav class="dash-nav">          ← MỚI (UX-P0, ChatGPT chốt)
+    Tổng quan → #overview | Giao dịch → #transactions | Tài khoản → #accounts
     | Tài sản & Nợ → #networth | Danh mục → #categories
   .nav-right: ← Về website | Đăng xuất   (giữ nguyên)
 <main class="container">
@@ -116,20 +116,26 @@ So với trước: "Thêm giao dịch" được đưa lên ngay sau Overview; "�
 | Rủi ro | Giảm thiểu |
 |---|---|
 | Reorder DOM làm hỏng JS | JS dùng `getElementById` cho mọi element quan trọng; không có logic phụ thuộc thứ tự DOM (đã kiểm tra: chỉ 1 `scrollIntoView` trong `nwShowForm`, vẫn đúng sau reorder) |
-| Form giao dịch bị ẩn khi edit từ list | Kiểm tra và giữ: edit phải mở form trước khi scroll/focus |
+| Thu gọn form giao dịch ảnh hưởng edit | Đã kiểm tra code: edit transaction dùng prompt + category modal (hàm `editTransaction`), KHÔNG dùng `#transactionForm`. Form chỉ phục vụ THÊM → thu gọn không ảnh hưởng luồng sửa |
 | Anchor bị header che | Header không sticky; thêm `scroll-margin-top` dự phòng |
 | Regression filter/statistics/categories | Không đổi id, không đổi logic — QA full matrix các module |
 
 ## 7. QA sau implementation (Milu tự QA, không kéo anh nghiệm thu vụn)
 
+### QA regression (giữ nguyên)
 - Navigation: 5 link scroll đúng section trên desktop + mobile; mobile nav scroll ngang không vỡ layout.
 - Thêm giao dịch: bấm "+ Thêm giao dịch" mở form; submit expense/income/transfer đúng logic cũ; edit từ list vẫn mở form và scroll đúng.
 - Regression: Accounts CRUD, Transfer, Filter (23 cases), Net Worth, Statistics, Categories (T3 validation 2 flows) — spot-check các case đã PASS trước đây.
 - `node --check` cho mọi inline script sau sửa.
 - Không có thay đổi DB: verify không có migration mới, không đụng Supabase.
 
+### QA bổ sung theo yêu cầu ChatGPT (final review)
+- **UX-N1 — Navigation không làm mất state:** đặt filter (Type=Expense, Search=abc) → bấm nav Tài khoản → bấm nav Giao dịch → filter vẫn giữ nguyên, không reload/reset dữ liệu.
+- **UX-N2 — Navigation sau khi mở form:** bấm "+ Thêm giao dịch" (form mở) → bấm nav Tài khoản → bấm nav Giao dịch → form không tự đóng bất thường, dữ liệu form không mất, không JS error.
+- **UX-N3 — Mobile navigation:** ở mobile, 5 mục nav scroll ngang được, không wrap thành 2 dòng, không vỡ layout (≤800px và ≤550px).
+
 ## 8. Câu hỏi cho ChatGPT
 
-1. Nav "Giao dịch" → scroll tới `#action` (quick-add) như đề xuất, hay tới `#transactions` (lịch sử)? Em đề xuất `#action` vì khớp user journey "vừa chi → nhập vào đâu".
+1. ~~Nav "Giao dịch" → scroll tới `#action` (quick-add) như đề xuất, hay tới `#transactions` (lịch sử)?~~ → **ChatGPT chốt: Giao dịch → `#transactions`** (ngữ nghĩa navigation: xem/tìm/lọc/sửa/xóa lịch sử). #action vẫn ngay sau Overview nên thao tác thêm không mất đi.
 2. Có cần sticky header không, hay giữ header tĩnh như hiện tại? Em đề xuất giữ tĩnh ở V1.
 3. Nhãn tầng (OVERVIEW/THAO TÁC/...) nên là heading nhỏ trong UI hay chỉ là comment trong code? Em đề xuất heading nhỏ để người dùng cũng thấy cấu trúc.
