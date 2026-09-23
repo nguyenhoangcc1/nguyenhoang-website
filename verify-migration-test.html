@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify migration net_worth_items (TẠM THỜI)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+body{font-family:system-ui,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;background:#f6fbf6}
+.warn{background:#fff3cd;border:2px solid #c90;padding:12px;border-radius:8px;font-weight:bold}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}
+th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+th{background:#f0f0f0}
+.pass{color:#0a0;font-weight:bold}
+.fail{color:#c00;font-weight:bold}
+#runBtn{font-size:18px;padding:12px 24px;background:#0a0;color:#fff;border:none;border-radius:8px;cursor:pointer;margin:12px 0}
+#runBtn:disabled{background:#999;cursor:not-allowed}
+#log{background:#111;color:#0f0;padding:12px;border-radius:8px;white-space:pre-wrap;font-family:monospace;font-size:13px;max-height:300px;overflow:auto}
+</style>
+</head>
+<body>
+<h1>🔍 Verify migration <code>net_worth_items</code> (trang tạm)</h1>
+<div class="warn">Chỉ kiểm tra behavioral qua RLS + constraints. Mọi dòng test tạo ra đều bị xóa ngay trong bài test. Không DDL, không đụng bảng khác. File này sẽ bị xóa sau khi xong.</div>
+<div id="status">Đang tải...</div>
+<button id="runBtn" disabled>Chạy verification</button>
+<div id="results"></div>
+<h3>Nhật ký</h3>
+<div id="log"></div>
+
+<script>
+const SUPABASE_URL="https://mxjcpnmquxjkrfrchivg.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14amNwbm1xdXhqa3JmcmNoaXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1NDQ0NDEsImV4cCI6MjEwNTEyMDQ0MX0.xk_BAHOUkK4JJFXDBJA1NsXKzAgyDQgy46qeVKW-ZlM";
+const supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+
+function log(m){document.getElementById("log").textContent+=m+"\n";}
+const results=[];
+function rec(id,name,ok,detail){
+    results.push({id,name,ok,detail});
+    log((ok?"PASS":"FAIL")+" ["+id+"] "+name+(detail?" — "+detail:""));
+}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+
+let session=null, uid=null, testIds=[], firstAccountId=null;
+
+async function init(){
+    const {data:{session:s}}=await supabaseClient.auth.getSession();
+    session=s;
+    if(!session){
+        document.getElementById("status").textContent="Chưa đăng nhập. Hãy đăng nhập ở trang chính trước.";
+        return;
+    }
+    uid=session.user.id;
+    const {data:accs,error:accErr}=await supabaseClient.from("accounts").select("id").eq("user_id",uid).limit(1);
+    if(accErr||!accs.length){
+        document.getElementById("status").textContent="Không đọc được accounts.";
+        return;
+    }
+    firstAccountId=accs[0].id;
+    const {data:pre,error:preErr}=await supabaseClient.from("net_worth_items").select("id").eq("user_id",uid);
+    document.getElementById("status").innerHTML=
+        "Sẵn sàng. Bảng <code>net_worth_items</code> đọc được qua RLS; hiện có <b>"+(pre?pre.length:"?")+"</b> dòng của user này (kỳ vọng 0).";
+    if(preErr){rec("T0","Bảng tồn tại + RLS select",false,preErr.message);}
+    else{rec("T0","Bảng tồn tại + RLS select",true,"đọc được, "+pre.length+" dòng");}
+    const btn=document.getElementById("runBtn");
+    btn.disabled=false;
+    btn.onclick=run;
+}
+
+async function run(){
+    const btn=document.getElementById("runBtn");
+    btn.disabled=true; btn.textContent="Đang chạy...";
+    const base={user_id:uid};
+
+    // T1: insert manual asset hợp lệ
+    let m1=null;
+    {
+        const {data,error}=await supabaseClient.from("net_worth_items")
+            .insert({...base,name:"Verify manual asset",type:"asset",category:"Other",account_id:null,value:1000,currency:"VND",notes:"t1"})
+            .select().single();
+        if(error){rec("T1","Insert manual asset hợp lệ",false,error.message);}
+        else{m1=data;testIds.push(data.id);rec("T1","Insert manual asset hợp lệ",true,"id="+data.id);}
+    }
+
+    // T2: account_id + value cùng có -> phải reject (XOR)
+    {
+        const {error}=await supabaseClient.from("net_worth_items")
+            .insert({...base,name:"Verify bad xor",type:"asset",category:"Other",account_id:firstAccountId,value:1000});
+        rec("T2","account_id + value cùng có bị từ chối",!!error,error?error.message:"KHÔNG bị từ chối!");
+    }
+
+    // T3: cả hai NULL -> phải reject (XOR)
+    {
+        const {error}=await supabaseClient.from("net_worth_items")
+            .insert({...base,name:"Verify bad xor2",type:"asset",category:"Other",account_id:null,value:null});
+        rec("T3","account_id + value cùng NULL bị từ chối",!!error,error?error.message:"KHÔNG bị từ chối!");
+    }
+
+    // T4: manual value âm -> phải reject
+    {
+        const {error}=await supabaseClient.from("net_worth_items")
+            .insert({...base,name:"Verify neg",type:"liability",category:"Other",account_id:null,value:-5});
+        rec("T4","Manual value âm bị từ chối",!!error,error?error.message:"KHÔNG bị từ chối!");
+    }
+
+    // T5: type sai -> phải reject
+    {
+        const {error}=await supabaseClient.from("net_worth_items")
+            .insert({...base,name:"Verify badtype",type:"weird",category:"Other",account_id:null,value:10});
+        rec("T5","type ngoài asset/liability bị từ chối",!!error,error?error.message:"KHÔNG bị từ chối!");
+    }
+
+    // T6: linked item hợp lệ
+    let l1=null;
+    {
+        const {data,error}=await supabaseClient.from("net_worth_items")
+            .insert({...base,name:"Verify linked",type:"asset",category:"Cash & Bank",account_id:firstAccountId,value:null})
+            .select().single();
+        if(error){rec("T6","Insert linked hợp lệ",false,error.message);}
+        else{l1=data;testIds.push(data.id);rec("T6","Insert linked hợp lệ",true,"id="+data.id);}
+    }
+
+    // T7: trùng link cùng account -> phải reject (unique index)
+    {
+        const {error}=await supabaseClient.from("net_worth_items")
+            .insert({...base,name:"Verify duplink",type:"asset",category:"Other",account_id:firstAccountId,value:null});
+        rec("T7","Hai item cùng link một Account bị từ chối",!!error,error?error.message:"KHÔNG bị từ chối!");
+    }
+
+    // T8: link account không tồn tại -> phải reject (composite FK)
+    {
+        const {error}=await supabaseClient.from("net_worth_items")
+            .insert({...base,name:"Verify badfk",type:"asset",category:"Other",account_id:"00000000-0000-0000-0000-000000000000",value:null});
+        rec("T8","Link account lạ bị từ chối (FK)",!!error,error?error.message:"KHÔNG bị từ chối!");
+    }
+
+    // T9: update -> updated_at phải đổi (trigger)
+    {
+        let ok=false,detail="";
+        if(m1){
+            const before=m1.updated_at;
+            await sleep(1200);
+            const {error:upErr}=await supabaseClient.from("net_worth_items")
+                .update({notes:"t9"}).eq("id",m1.id).eq("user_id",uid);
+            if(upErr){detail=upErr.message;}
+            else{
+                const {data,error:selErr}=await supabaseClient.from("net_worth_items")
+                    .select("updated_at").eq("id",m1.id).single();
+                if(selErr){detail=selErr.message;}
+                else{ok=new Date(data.updated_at)>new Date(before);detail="before="+before+" after="+data.updated_at;}
+            }
+        } else {detail="bỏ qua vì T1 fail";}
+        rec("T9","UPDATE làm updated_at thay đổi (trigger)",ok,detail);
+    }
+
+    // T10: dọn dẹp các dòng test
+    {
+        let ok=true,detail="";
+        for(const id of testIds){
+            const {error}=await supabaseClient.from("net_worth_items").delete().eq("id",id).eq("user_id",uid);
+            if(error){ok=false;detail+=id+":"+error.message+" ";}
+        }
+        testIds=[];
+        const {data,error}=await supabaseClient.from("net_worth_items").select("id").eq("user_id",uid);
+        if(error){ok=false;detail+=error.message;}
+        else if(data.length!==0){ok=false;detail+="còn "+data.length+" dòng!";}
+        else{detail+="0 dòng còn lại";}
+        rec("T10","Dọn sạch dòng test",ok,detail);
+    }
+
+    let html="<table><tr><th>ID</th><th>Bài test</th><th>Kết quả</th><th>Chi tiết</th></tr>";
+    let fails=0;
+    results.forEach(r=>{
+        if(!r.ok)fails++;
+        html+="<tr><td>"+r.id+"</td><td>"+r.name+"</td><td class='"+(r.ok?"pass":"fail")+"'>"+(r.ok?"PASS":"FAIL")+"</td><td>"+(r.detail||"")+"</td></tr>";
+    });
+    html+="</table><p><b>Tổng: "+results.length+" test, "+fails+" FAIL.</b></p>";
+    document.getElementById("results").innerHTML=html;
+    document.getElementById("status").innerHTML="<b>Hoàn tất:</b> "+(results.length-fails)+"/"+results.length+" PASS.";
+    btn.textContent="Đã xong";
+    log("=== XONG ===");
+}
+
+init();
+</script>
+</body>
+</html>
