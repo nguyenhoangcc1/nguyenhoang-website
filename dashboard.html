@@ -1581,10 +1581,13 @@ function initStats(){
     document.getElementById("statsMonth").addEventListener("change",e=>{
         if(e.target.value){ setStatsPeriod("month",e.target.value); }
     });
-    document.getElementById("statsYear").addEventListener("change",e=>{
+    const yearHandler=e=>{
         const v=e.target.value;
         if(v&&Number(v)>=2000&&Number(v)<=2100){ setStatsPeriod("year",String(v)); }
-    });
+    };
+    /* cả change (blur/Enter) và input (gõ tay) để đồng bộ chắc chắn */
+    document.getElementById("statsYear").addEventListener("change",yearHandler);
+    document.getElementById("statsYear").addEventListener("input",yearHandler);
 }
 
 /* ============ hết Dashboard & Statistics v1 ============ */
