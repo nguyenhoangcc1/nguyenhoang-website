@@ -34,6 +34,8 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 .transaction-list{display:flex;flex-direction:column;gap:10px}.transaction{display:flex;align-items:center;justify-content:space-between;padding:15px;border:1px solid #e5e7eb;border-radius:10px}
 .transaction-left{display:flex;flex-direction:column;gap:4px}.transaction-desc{font-weight:600}.transaction-date{color:#64748b;font-size:13px}
 .transaction-amount{font-weight:700}.empty{color:#64748b;padding:15px 0}.loading{text-align:center;padding:60px 20px;color:#64748b}
+.filter-bar{background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:18px}
+.filter-badge{display:inline-block;font-size:13px;font-weight:600;color:#0f766e;background:#ccfbf1;border-radius:20px;padding:4px 12px;margin-left:10px;vertical-align:middle}
 @media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}.account-grid{grid-template-columns:1fr 1fr}.nav-right{gap:10px}}
 @media(max-width:550px){.cards{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.form-group.full{grid-column:auto}.account-grid{grid-template-columns:1fr}.back-link{display:none}.welcome h1{font-size:25px}}
 </style>
@@ -144,8 +146,55 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 </div>
 
 <div class="section">
-<h2>Giao dịch gần đây</h2>
+<h2>Giao dịch <span id="filterBadge" class="filter-badge" style="display:none;">🔍 Đang lọc</span></h2>
+<div class="filter-bar">
+<div class="form-grid">
+<div class="form-group">
+<label for="filterType">Loại giao dịch</label>
+<select id="filterType">
+<option value="all">Tất cả</option>
+<option value="income">Thu nhập</option>
+<option value="expense">Chi tiêu</option>
+<option value="transfer">Chuyển khoản</option>
+</select>
+</div>
+<div class="form-group">
+<label for="filterAccount">Tài khoản</label>
+<select id="filterAccount">
+<option value="all">Tất cả</option>
+</select>
+</div>
+<div class="form-group">
+<label for="filterDatePreset">Khoảng thời gian</label>
+<select id="filterDatePreset">
+<option value="all">Tất cả</option>
+<option value="today">Hôm nay</option>
+<option value="last7">7 ngày qua</option>
+<option value="thisMonth">Tháng này</option>
+<option value="lastMonth">Tháng trước</option>
+<option value="custom">Tùy chọn...</option>
+</select>
+</div>
+<div class="form-group">
+<label for="filterSearch">Tìm kiếm nội dung</label>
+<input id="filterSearch" placeholder="Ví dụ: Shopee" autocomplete="off">
+</div>
+<div class="form-group" id="customFromGroup" style="display:none;">
+<label for="filterStartDate">Từ ngày</label>
+<input type="date" id="filterStartDate">
+</div>
+<div class="form-group" id="customToGroup" style="display:none;">
+<label for="filterEndDate">Đến ngày</label>
+<input type="date" id="filterEndDate">
+</div>
+</div>
+<div class="message" id="filterError" style="color:#dc3545;"></div>
+<button class="add-btn" type="button" id="clearFiltersBtn" style="display:none;">✖ Xóa bộ lọc</button>
+</div>
 <div id="transactionList" class="transaction-list"><div class="empty">Chưa có giao dịch nào.</div></div>
+<div style="text-align:center;margin-top:14px;">
+<button class="add-btn" type="button" id="showMoreBtn" style="display:none;"></button>
+</div>
 </div>
 </div>
 </main>
@@ -161,6 +210,19 @@ const supabaseClient=window.supabase.createClient(
 
 /* Ánh xạ id tài khoản -> tên, dùng để hiển thị chuyển khoản "Nguồn → Đích" */
 let accountNameById={};
+
+/* ============ BỘ LỌC & TÌM KIẾM GIAO DỊCH ============ */
+const FILTER_PAGE_SIZE=20;
+let allTransactions=[];
+let displayedCount=FILTER_PAGE_SIZE;
+const currentFilters={
+    type:"all",
+    accountId:"all",
+    datePreset:"all",
+    startDate:"",
+    endDate:"",
+    search:""
+};
 
 function formatMoney(amount){
     return new Intl.NumberFormat("vi-VN").format(amount)+" đ";
@@ -197,6 +259,8 @@ async function loadDashboard(){
 
     await loadAccounts(session.user.id);
     await loadTransactions(session.user.id);
+
+    initTransactionFilters();
 }
 
 
@@ -243,6 +307,23 @@ async function loadAccounts(userId){
         select.appendChild(option);
         toSelect.appendChild(option.cloneNode(true));
     });
+
+    /* Nạp danh sách tài khoản cho bộ lọc giao dịch */
+    const filterAccountSelect=document.getElementById("filterAccount");
+
+    filterAccountSelect.innerHTML='<option value="all">Tất cả</option>';
+
+    data.forEach(account=>{
+        const option=document.createElement("option");
+        option.value=account.id;
+        option.textContent=account.name;
+        filterAccountSelect.appendChild(option);
+    });
+
+    /* Giữ lại tài khoản đang lọc (nếu có) sau khi reload danh sách */
+    if(currentFilters.accountId!=="all"){
+        filterAccountSelect.value=currentFilters.accountId;
+    }
 
     const list=document.getElementById("accountList");
 
@@ -993,19 +1074,111 @@ async function loadTransactions(userId){
         return;
     }
 
+    allTransactions=data;
+    displayedCount=FILTER_PAGE_SIZE;
+    applyFiltersAndRender();
+}
+
+
+/* Chuẩn hóa chuỗi để tìm kiếm không dấu, không phân biệt hoa thường */
+function normSearch(s){
+    return (s||"").toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g,"");
+}
+
+function todayStr(){
+    return new Date().toISOString().split("T")[0];
+}
+
+/* Tính khoảng ngày [from,to] theo preset; ["",""] nghĩa là không lọc ngày */
+function resolveDateRange(){
+    const preset=currentFilters.datePreset;
+
+    if(preset==="today"){
+        const t=todayStr();
+        return [t,t];
+    }
+
+    if(preset==="last7"){
+        const to=new Date();
+        const from=new Date();
+        from.setDate(from.getDate()-6);
+        const f=d=>d.toISOString().split("T")[0];
+        return [f(from),f(to)];
+    }
+
+    if(preset==="thisMonth"||preset==="lastMonth"){
+        const now=new Date();
+        const y=now.getFullYear();
+        const m=now.getMonth()+(preset==="lastMonth"?-1:0);
+        const f=d=>d.toISOString().split("T")[0];
+        return [f(new Date(y,m,1)),f(new Date(y,m+1,0))];
+    }
+
+    if(preset==="custom"){
+        return [currentFilters.startDate,currentFilters.endDate];
+    }
+
+    return ["",""];
+}
+
+function isFiltering(){
+    return currentFilters.type!=="all"||
+        currentFilters.accountId!=="all"||
+        currentFilters.datePreset!=="all"||
+        currentFilters.search!=="";
+}
+
+function applyFilters(){
+    const [from,to]=resolveDateRange();
+    const q=normSearch(currentFilters.search.trim());
+
+    return allTransactions.filter(t=>{
+        /* 1. Loại giao dịch */
+        if(currentFilters.type!=="all"&&t.type!==currentFilters.type){
+            return false;
+        }
+
+        /* 2. Tài khoản — transfer tính khi là nguồn HOẶC đích */
+        if(currentFilters.accountId!=="all"){
+            const hit=t.type==="transfer"
+                ?(t.account_id===currentFilters.accountId||
+                  t.destination_account_id===currentFilters.accountId)
+                :(t.account_id===currentFilters.accountId);
+            if(!hit){
+                return false;
+            }
+        }
+
+        /* 3. Khoảng ngày (chuỗi YYYY-MM-DD so sánh trực tiếp được) */
+        if(from&&t.transaction_date<from){
+            return false;
+        }
+        if(to&&t.transaction_date>to){
+            return false;
+        }
+
+        /* 4. Tìm kiếm theo nội dung */
+        if(q&&!normSearch(t.description||"").includes(q)){
+            return false;
+        }
+
+        return true;
+    });
+}
+
+/* Tính lại 4 chỉ số trên tập đã lọc — giữ nguyên ngữ nghĩa cũ:
+   transfer không tính vào thu/chi, nhưng vẫn tính vào số giao dịch */
+function updateStats(filtered){
     let totalIncome=0;
     let totalExpense=0;
 
-    data.forEach(t=>{
-
+    filtered.forEach(t=>{
         const amount=Number(t.amount);
-
-        /* transfer không tính vào tổng thu/chi (đúng thiết kế);
-           vẫn tính trong data.length -> "Số giao dịch" */
         if(t.type==="income"){
             totalIncome+=amount;
         }
-
         if(t.type==="expense"){
             totalExpense+=amount;
         }
@@ -1013,17 +1186,125 @@ async function loadTransactions(userId){
 
     document.getElementById("totalIncome").textContent=
         formatMoney(totalIncome);
-
     document.getElementById("totalExpense").textContent=
         formatMoney(totalExpense);
-
     document.getElementById("totalBalance").textContent=
         formatMoney(totalIncome-totalExpense);
-
     document.getElementById("transactionCount").textContent=
-        data.length;
+        filtered.length;
+}
 
-    renderTransactions(data);
+function updateFilterBadge(){
+    const filtering=isFiltering();
+    document.getElementById("filterBadge").style.display=
+        filtering?"inline-block":"none";
+    document.getElementById("clearFiltersBtn").style.display=
+        filtering?"inline-block":"none";
+}
+
+function applyFiltersAndRender(){
+    const filtered=applyFilters();
+    updateStats(filtered);
+    renderTransactions(filtered);
+    updateFilterBadge();
+}
+
+function clearFilters(){
+    currentFilters.type="all";
+    currentFilters.accountId="all";
+    currentFilters.datePreset="all";
+    currentFilters.startDate="";
+    currentFilters.endDate="";
+    currentFilters.search="";
+
+    document.getElementById("filterType").value="all";
+    document.getElementById("filterAccount").value="all";
+    document.getElementById("filterDatePreset").value="all";
+    document.getElementById("filterStartDate").value="";
+    document.getElementById("filterEndDate").value="";
+    document.getElementById("filterSearch").value="";
+    document.getElementById("customFromGroup").style.display="none";
+    document.getElementById("customToGroup").style.display="none";
+    document.getElementById("filterError").textContent="";
+
+    displayedCount=FILTER_PAGE_SIZE;
+    applyFiltersAndRender();
+}
+
+/* Đọc bộ lọc từ UI vào currentFilters.
+   Trả về false nếu ngày tùy chọn không hợp lệ —
+   khi đó GIỮ NGUYÊN toàn bộ trạng thái cũ (bộ lọc/danh sách/chỉ số). */
+function readFiltersFromUI(){
+    const preset=document.getElementById("filterDatePreset").value;
+
+    if(preset==="custom"){
+        const s=document.getElementById("filterStartDate").value;
+        const e=document.getElementById("filterEndDate").value;
+
+        if(s&&e&&s>e){
+            document.getElementById("filterError").textContent=
+                "Ngày bắt đầu không được lớn hơn ngày kết thúc.";
+            return false;
+        }
+
+        /* Chỉ mới nhập 1 đầu ngày: giữ nguyên khoảng ngày cũ,
+           không áp dụng dở dang để danh sách và chỉ số không
+           bị thay đổi khi người dùng đang nhập (F11). */
+        if((s&&!e)||(!s&&e)){
+            document.getElementById("filterError").textContent="";
+            return false;
+        }
+
+        currentFilters.startDate=s;
+        currentFilters.endDate=e;
+    }
+
+    document.getElementById("filterError").textContent="";
+
+    currentFilters.type=document.getElementById("filterType").value;
+    currentFilters.accountId=document.getElementById("filterAccount").value;
+    currentFilters.datePreset=preset;
+    currentFilters.search=document.getElementById("filterSearch").value;
+
+    return true;
+}
+
+function onFilterChanged(){
+    if(!readFiltersFromUI()){
+        return; /* ngày sai: giữ nguyên mọi thứ như cũ */
+    }
+    displayedCount=FILTER_PAGE_SIZE; /* đổi bộ lọc → reset về 20 dòng */
+    applyFiltersAndRender();
+}
+
+function initTransactionFilters(){
+    document.getElementById("filterType")
+        .addEventListener("change",onFilterChanged);
+    document.getElementById("filterAccount")
+        .addEventListener("change",onFilterChanged);
+    document.getElementById("filterDatePreset")
+        .addEventListener("change",()=>{
+            const custom=
+                document.getElementById("filterDatePreset").value==="custom";
+            document.getElementById("customFromGroup").style.display=
+                custom?"flex":"none";
+            document.getElementById("customToGroup").style.display=
+                custom?"flex":"none";
+            onFilterChanged();
+        });
+    document.getElementById("filterStartDate")
+        .addEventListener("change",onFilterChanged);
+    document.getElementById("filterEndDate")
+        .addEventListener("change",onFilterChanged);
+    document.getElementById("filterSearch")
+        .addEventListener("input",onFilterChanged);
+    document.getElementById("clearFiltersBtn")
+        .addEventListener("click",clearFilters);
+    document.getElementById("showMoreBtn")
+        .addEventListener("click",()=>{
+            displayedCount+=FILTER_PAGE_SIZE;
+            applyFiltersAndRender();
+        });
 }
 
 
@@ -1032,13 +1313,19 @@ function renderTransactions(data){
     const list=document.getElementById("transactionList");
 
     if(!data.length){
-        list.innerHTML="<div class='empty'>Chưa có giao dịch nào.</div>";
+        list.innerHTML=
+            "<div class='empty'>"+
+            (isFiltering()&&allTransactions.length
+                ?"Không tìm thấy giao dịch phù hợp."
+                :"Chưa có giao dịch nào.")+
+            "</div>";
+        document.getElementById("showMoreBtn").style.display="none";
         return;
     }
 
     list.innerHTML="";
 
-    data.slice(0,20).forEach(t=>{
+    data.slice(0,displayedCount).forEach(t=>{
 
         const isTransfer=t.type==="transfer";
 
@@ -1156,6 +1443,17 @@ function renderTransactions(data){
 
         list.appendChild(row);
     });
+
+    /* Nút "Hiển thị thêm" */
+    const moreBtn=document.getElementById("showMoreBtn");
+
+    if(data.length>displayedCount){
+        moreBtn.style.display="inline-block";
+        moreBtn.textContent=
+            "Hiển thị thêm ("+(data.length-displayedCount)+" giao dịch)";
+    }else{
+        moreBtn.style.display="none";
+    }
 }
 
 
