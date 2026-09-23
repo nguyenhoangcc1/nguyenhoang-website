@@ -1247,6 +1247,14 @@ function readFiltersFromUI(){
             return false;
         }
 
+        /* Chỉ mới nhập 1 đầu ngày: giữ nguyên khoảng ngày cũ,
+           không áp dụng dở dang để danh sách và chỉ số không
+           bị thay đổi khi người dùng đang nhập (F11). */
+        if((s&&!e)||(!s&&e)){
+            document.getElementById("filterError").textContent="";
+            return false;
+        }
+
         currentFilters.startDate=s;
         currentFilters.endDate=e;
     }
