@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Cleanup QA-UX-TEST (temp)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<h1>Cleanup QA-UX-TEST</h1>
+<pre id="log">Đang chạy...</pre>
+<button id="runBtn" type="button">Chạy cleanup</button>
+<script>
+const SUPABASE_URL="https://mxjcpnmquxjkrfrchivg.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14amNwbm1xdXhqa3JmcmNoaXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1NDQ0NDEsImV4cCI6MjEwNTEyMDQ0MX0.xk_BAHOUkK4JJFXDBJA1NsXKzAgyDQgy46qeVKW-ZlM";
+const supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+const logEl=document.getElementById("log");
+function log(m){logEl.textContent+="\n"+m;}
+
+async function run(){
+  logEl.textContent="Bắt đầu cleanup...";
+  const {data:{session}}=await supabaseClient.auth.getSession();
+  if(!session){log("FAIL: chưa đăng nhập");return;}
+  const uid=session.user.id;
+
+  // before state
+  const {data:txBefore}=await supabaseClient.from("transactions").select("id").eq("user_id",uid);
+  const {data:accBefore}=await supabaseClient.from("accounts").select("name,balance").eq("user_id",uid).order("name");
+  log("TRƯỚC: tx_count="+txBefore.length);
+  accBefore.forEach(a=>log("  "+a.name+": "+a.balance));
+
+  // find QA transactions
+  const {data:qa}=await supabaseClient.from("transactions").select("*").eq("user_id",uid).eq("description","QA-UX-TEST");
+  log("Tìm thấy "+qa.length+" giao dịch QA-UX-TEST");
+  for(const t of qa){
+    if(t.account_id){
+      const {data:acc}=await supabaseClient.from("accounts").select("balance").eq("id",t.account_id).eq("user_id",uid).single();
+      const newBal=Number(acc.balance)+(t.type==="income"?-Number(t.amount):Number(t.amount));
+      const {error:uerr}=await supabaseClient.from("accounts").update({balance:newBal}).eq("id",t.account_id).eq("user_id",uid);
+      if(uerr){log("FAIL update balance: "+uerr.message);return;}
+      log("Hoàn số dư "+t.account_id+": "+acc.balance+" -> "+newBal);
+    }
+    const {error:derr}=await supabaseClient.from("transactions").delete().eq("id",t.id).eq("user_id",uid);
+    if(derr){log("FAIL delete: "+derr.message);return;}
+    log("Đã xóa giao dịch "+t.id+" ("+t.type+" "+t.amount+")");
+  }
+
+  // after state
+  const {data:txAfter}=await supabaseClient.from("transactions").select("id,description,amount,type").eq("user_id",uid);
+  const {data:accAfter}=await supabaseClient.from("accounts").select("name,balance").eq("user_id",uid).order("name");
+  log("SAU: tx_count="+txAfter.length);
+  txAfter.forEach(t=>log("  còn lại: "+t.type+" "+t.amount+" "+(t.description||"")));
+  accAfter.forEach(a=>log("  "+a.name+": "+a.balance));
+  const vcb=accAfter.find(a=>a.name==="Vietcombank");
+  if(txAfter.length===1&&vcb&&Number(vcb.balance)===6000000){
+    log("CLEANUP PASS: đúng 1 giao dịch gốc, Vietcombank về 6.000.000");
+  }else{
+    log("CLEANUP CHECK: cần đối chiếu thủ công");
+  }
+}
+document.getElementById("runBtn").addEventListener("click",run);
+</script>
+</body>
+</html>
