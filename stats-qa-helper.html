@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QA Helper — Dashboard Stats</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+body{font-family:system-ui,sans-serif;max-width:760px;margin:30px auto;padding:0 16px}
+button{display:block;width:100%;margin:8px 0;padding:12px;font-size:15px;border-radius:8px;border:1px solid #ddd;background:#f8fafc;cursor:pointer;text-align:left}
+button.danger{background:#fef2f2;border-color:#fecaca}
+#log{background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;white-space:pre-wrap;font-size:13px;min-height:200px;margin-top:16px}
+</style>
+</head>
+<body>
+<h2>QA Helper — Dashboard & Statistics v1 (TEMP)</h2>
+<button onclick="qaBulk()">➕ Tạo 25 QA bulk expense (tháng 9/2026, the ATM)</button>
+<button onclick="qaBoundary()">➕ Tạo QA boundary (31/08, 01/09, 31/12/2025, 01/01/2026)</button>
+<button onclick="qaDeleteQA()">🗑️ Xóa mọi transaction QA*</button>
+<button onclick="qaResetBalances()">💱 Reset balances về gốc (6m/1m/0/-1m)</button>
+<button class="danger" onclick="qaFullCleanup()">🧹 FULL CLEANUP (xóa QA* + reset balances)</button>
+<button onclick="qaState()">📊 Xem trạng thái hiện tại</button>
+<div id="log">Chờ đăng nhập...</div>
+<script>
+const SUPABASE_URL="https://mxjcpnmquxjkrfrchivg.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14amNwbm1xdXhqa3JmcmNoaXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1NDQ0NDEsImV4cCI6MjEwNTEyMDQ0MX0.xk_BAHOUkK4JJFXDBJA1NsXKzAgyDQgy46qeVKW-ZlM";
+const supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+let uid=null;
+function log(m){document.getElementById("log").textContent+="\n"+m;}
+(async()=>{
+  const {data:{session}}=await supabaseClient.auth.getSession();
+  if(!session){document.getElementById("log").textContent="Chưa đăng nhập — hãy đăng nhập ở stats-qa.html trước.";return;}
+  uid=session.user.id;
+  document.getElementById("log").textContent="Đã đăng nhập: "+session.user.email;
+})();
+async function atmId(){
+  const {data}=await supabaseClient.from("accounts").select("id").eq("user_id",uid).eq("name","the ATM").single();
+  return data.id;
+}
+async function vcbId(){
+  const {data}=await supabaseClient.from("accounts").select("id").eq("user_id",uid).eq("name","Vietcombank").single();
+  return data.id;
+}
+async function qaBulk(){
+  const aid=await atmId();
+  const rows=[];
+  for(let i=1;i<=25;i++){
+    const day=String(1+(i%28)).padStart(2,"0");
+    rows.push({user_id:uid,type:"expense",account_id:aid,amount:10000*i,description:"QA bulk "+i,transaction_date:"2026-09-"+day,category:"QA"});
+  }
+  const {error}=await supabaseClient.from("transactions").insert(rows);
+  log(error?("LỖI: "+error.message):"Đã tạo 25 QA bulk expense (direct insert, không đổi balance)");
+}
+async function qaBoundary(){
+  const aid=await atmId();
+  const rows=[
+    {user_id:uid,type:"expense",account_id:aid,amount:81000,description:"QA boundary 31/08",transaction_date:"2026-08-31",category:"QA"},
+    {user_id:uid,type:"expense",account_id:aid,amount:91000,description:"QA boundary 01/09",transaction_date:"2026-09-01",category:"QA"},
+    {user_id:uid,type:"expense",account_id:aid,amount:251200,description:"QA boundary 31/12/25",transaction_date:"2025-12-31",category:"QA"},
+    {user_id:uid,type:"expense",account_id:aid,amount:260100,description:"QA boundary 01/01/26",transaction_date:"2026-01-01",category:"QA"}
+  ];
+  const {error}=await supabaseClient.from("transactions").insert(rows);
+  log(error?("LỖI: "+error.message):"Đã tạo 4 QA boundary");
+}
+async function qaDeleteQA(){
+  const {error,count}=await supabaseClient.from("transactions").delete().eq("user_id",uid).ilike("description","QA%");
+  log(error?("LỖI: "+error.message):("Đã xóa transactions QA*"));
+}
+async function qaResetBalances(){
+  const targets={"Vietcombank":6000000,"the ATM":1000000,"ăn cơm":0,"HSBC":-1000000};
+  for(const [name,bal] of Object.entries(targets)){
+    const {error}=await supabaseClient.from("accounts").update({balance:bal}).eq("user_id",uid).eq("name",name);
+    if(error){log("LỖI "+name+": "+error.message);return;}
+  }
+  log("Balances về gốc: VCB 6m, ATM 1m, ăn cơm 0, HSBC -1m");
+}
+async function qaFullCleanup(){
+  await qaDeleteQA();
+  await qaResetBalances();
+  log("--- full cleanup xong ---");
+}
+async function qaState(){
+  const {data:acc}=await supabaseClient.from("accounts").select("name,type,balance").eq("user_id",uid).order("name");
+  log("=== ACCOUNTS ==="); acc.forEach(a=>log(a.name+" ["+a.type+"] = "+a.balance));
+  const {data:tx}=await supabaseClient.from("transactions").select("description,transaction_date,amount,type").eq("user_id",uid).ilike("description","QA%");
+  log("=== QA TRANSACTIONS ("+(tx?tx.length:0)+") ==="); (tx||[]).forEach(t=>log(t.transaction_date+" "+t.type+" "+t.amount+" "+t.description));
+  const {count}=await supabaseClient.from("transactions").select("id",{count:"exact",head:true}).eq("user_id",uid);
+  log("Tổng transactions: "+count);
+}
+</script>
+</body>
+</html>
