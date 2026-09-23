@@ -7,9 +7,8 @@
 -- được đầy đủ. File này gộp V1–V14 thành MỘT bảng: test | pass | detail.
 --
 -- QUY TẮC: chỉ SELECT, không INSERT/UPDATE/DELETE/ALTER/CREATE/DROP.
--- KỲ VỌNG ở giai đoạn hiện tại (sau 1/3 + 2/3, TRƯỚC 3/3):
---   mọi dòng pass = true. Riêng V4b là thông tin (semantics CHECK chưa tồn tại
---   là ĐÚNG ở giai đoạn này).
+-- KỲ VỌNG ở giai đoạn hiện tại (sau 1/3 + 2/3 + 3/3):
+--   mọi dòng pass = true, bao gồm V4b (semantics CHECK đã tồn tại).
 -- ============================================================================
 
 select 'V1_table_exists' as test,
@@ -50,12 +49,12 @@ select 'V4_constraints',
         where conrelid = 'public.categories'::regclass
           and conname like 'categories%')
 union all
-select 'V4b_semantics_check_not_yet' as test,
-       (select count(*) = 0
+select 'V4b_semantics_check_present' as test,
+       (select count(*) = 1
         from pg_constraint
         where conrelid = 'public.transactions'::regclass
           and conname = 'transactions_category_semantics_check') as pass,
-       'expected absent before PART 3/3' as detail
+       'expected present after PART 3/3' as detail
 union all
 select 'V5_unique_index_nulls_not_distinct',
        (select count(*) = 1
