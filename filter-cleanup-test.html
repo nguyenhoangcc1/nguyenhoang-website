@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dọn dẹp dữ liệu test (TẠM THỜI)</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+body{font-family:system-ui,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;background:#fff8f0}
+.warn{background:#ffe1e1;border:2px solid #c00;padding:12px;border-radius:8px;font-weight:bold}
+table{border-collapse:collapse;width:100%;margin:12px 0;font-size:14px}
+th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+th{background:#f0f0f0}
+.keep{background:#e6ffe6}
+.del{background:#fff}
+#deleteBtn{font-size:18px;padding:12px 24px;background:#c00;color:#fff;border:none;border-radius:8px;cursor:pointer;margin:12px 0}
+#deleteBtn:disabled{background:#999;cursor:not-allowed}
+#log{background:#111;color:#0f0;padding:12px;border-radius:8px;white-space:pre-wrap;font-family:monospace;font-size:13px;max-height:300px;overflow:auto}
+.summary{background:#eef;padding:12px;border-radius:8px;margin:12px 0}
+</style>
+</head>
+<body>
+<h1>🧹 Dọn dẹp dữ liệu TEST (trang tạm thời)</h1>
+<div class="warn">Trang này CHỈ dùng để xóa dữ liệu test sau đợt kiểm thử trình duyệt. Giao dịch gốc (chuyển khoản 1.000.000đ HSBC → Vietcombank ngày 2026-09-22) KHÔNG bao giờ bị xóa. File này sẽ bị xóa khỏi website sau khi xong.</div>
+<div id="status">Đang tải...</div>
+<div id="balances" class="summary"></div>
+<div id="tableWrap"></div>
+<button id="deleteBtn" disabled>Xóa giao dịch test</button>
+<h3>Nhật ký</h3>
+<div id="log"></div>
+
+<script>
+const SUPABASE_URL="https://mxjcpnmquxjkrfrchivg.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im14amNwbm1xdXhqa3JmcmNoaXZnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1NDQ0NDEsImV4cCI6MjEwNTEyMDQ0MX0.xk_BAHOUkK4JJFXDBJA1NsXKzAgyDQgy46qeVKW-ZlM";
+const supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+
+function log(m){document.getElementById("log").textContent+=m+"\n";}
+const fmt=n=>Number(n||0).toLocaleString("vi-VN")+" đ";
+
+let session=null, accounts=[], accountNameById={}, txs=[], toDelete=[], toKeep=null;
+
+async function init(){
+    const {data:{session:s}}=await supabaseClient.auth.getSession();
+    session=s;
+    if(!session){
+        document.getElementById("status").textContent="Chưa đăng nhập. Hãy đăng nhập ở trang chính trước.";
+        return;
+    }
+    const uid=session.user.id;
+    const {data:accs,error:accErr}=await supabaseClient.from("accounts").select("*").eq("user_id",uid).order("created_at",{ascending:true});
+    if(accErr){document.getElementById("status").textContent="Lỗi tải tài khoản: "+accErr.message;return;}
+    accounts=accs;
+    accountNameById={};
+    accs.forEach(a=>accountNameById[a.id]=a.name);
+    document.getElementById("balances").innerHTML="<b>Số dư hiện tại:</b> "+accs.map(a=>a.name+": "+fmt(a.balance)).join(" | ");
+
+    const {data,error}=await supabaseClient.from("transactions").select("*").eq("user_id",uid).order("transaction_date",{ascending:false}).order("created_at",{ascending:false});
+    if(error){document.getElementById("status").textContent="Lỗi tải giao dịch: "+error.message;return;}
+    txs=data;
+
+    /* Nhận diện giao dịch GỐC: transfer 1.000.000đ, 2026-09-22, HSBC -> Vietcombank */
+    const originals=txs.filter(t=>
+        t.type==="transfer"&&
+        Number(t.amount)===1000000&&
+        t.transaction_date==="2026-09-22"&&
+        accountNameById[t.account_id]==="HSBC"&&
+        accountNameById[t.destination_account_id]==="Vietcombank"
+    );
+    if(originals.length!==1){
+        document.getElementById("status").innerHTML="<b style='color:#c00'>NGUY HIỂM: tìm thấy "+originals.length+" giao dịch gốc (cần đúng 1). DỪNG, không xóa gì.</b>";
+        log("ABORT: originals="+originals.length);
+        return;
+    }
+    toKeep=originals[0];
+    toDelete=txs.filter(t=>t.id!==toKeep.id);
+
+    let html="<table><tr><th>Ngày</th><th>Loại</th><th>Nội dung</th><th>Số tiền</th><th>Tài khoản</th><th>Quyết định</th></tr>";
+    txs.forEach(t=>{
+        const keep=t.id===toKeep.id;
+        const acc=t.type==="transfer"
+            ?(accountNameById[t.account_id]||"?")+" → "+(accountNameById[t.destination_account_id]||"?")
+            :(accountNameById[t.account_id]||"(không)");
+        html+="<tr class='"+(keep?"keep":"del")+"'><td>"+t.transaction_date+"</td><td>"+t.type+"</td><td>"+(t.description||"")+"</td><td>"+fmt(t.amount)+"</td><td>"+acc+"</td><td>"+(keep?"GIỮ LẠI (gốc)":"XÓA")+"</td></tr>";
+    });
+    html+="</table>";
+    document.getElementById("tableWrap").innerHTML=html;
+    document.getElementById("status").innerHTML="Tổng <b>"+txs.length+"</b> giao dịch: <b>"+toDelete.length+"</b> test sẽ xóa, <b>1</b> gốc giữ lại.";
+    const btn=document.getElementById("deleteBtn");
+    btn.disabled=false;
+    btn.textContent="Xóa "+toDelete.length+" giao dịch test (giữ lại 1 gốc)";
+    btn.onclick=runDelete;
+    log("Sẵn sàng. Gốc: "+toKeep.description+" "+fmt(toKeep.amount)+" "+toKeep.transaction_date);
+}
+
+async function deleteOne(t){
+    const uid=session.user.id;
+    if(t.type==="transfer"){
+        const {error}=await supabaseClient.rpc("delete_transfer",{p_tx_id:t.id});
+        if(error) throw new Error("delete_transfer: "+error.message);
+        return;
+    }
+    if(t.account_id){
+        const {data:acc,error:accErr}=await supabaseClient.from("accounts").select("balance").eq("id",t.account_id).eq("user_id",uid).single();
+        if(accErr) throw new Error("đọc số dư: "+accErr.message);
+        const cur=Number(acc.balance||0);
+        const nb=t.type==="income"?cur-Number(t.amount):cur+Number(t.amount);
+        const {error:upErr}=await supabaseClient.from("accounts").update({balance:nb}).eq("id",t.account_id).eq("user_id",uid);
+        if(upErr) throw new Error("cập nhật số dư: "+upErr.message);
+        const {error:delErr}=await supabaseClient.from("transactions").delete().eq("id",t.id).eq("user_id",uid);
+        if(delErr){
+            await supabaseClient.from("accounts").update({balance:cur}).eq("id",t.account_id).eq("user_id",uid);
+            throw new Error("xóa giao dịch: "+delErr.message+" (đã hoàn số dư)");
+        }
+        return;
+    }
+    const {error}=await supabaseClient.from("transactions").delete().eq("id",t.id).eq("user_id",uid);
+    if(error) throw new Error("xóa: "+error.message);
+}
+
+async function runDelete(){
+    const btn=document.getElementById("deleteBtn");
+    btn.disabled=true;
+    btn.textContent="Đang xóa...";
+    let ok=0, fail=0;
+    for(const t of toDelete){
+        try{
+            await deleteOne(t);
+            ok++;
+            log("✓ đã xóa ["+t.type+"] "+(t.description||"")+" "+fmt(t.amount)+" "+t.transaction_date);
+        }catch(e){
+            fail++;
+            log("✗ LỖI ["+t.type+"] "+(t.description||"")+" "+fmt(t.amount)+": "+e.message);
+        }
+    }
+    const uid=session.user.id;
+    const {data:accs}=await supabaseClient.from("accounts").select("*").eq("user_id",uid).order("created_at",{ascending:true});
+    const {data:rest}=await supabaseClient.from("transactions").select("id").eq("user_id",uid);
+    log("=== XONG: xóa thành công "+ok+", lỗi "+fail+", còn lại "+(rest?rest.length:0)+" giao dịch ===");
+    document.getElementById("balances").innerHTML="<b>Số dư sau dọn dẹp:</b> "+accs.map(a=>a.name+": "+fmt(a.balance)).join(" | ");
+    document.getElementById("status").innerHTML="<b>Hoàn tất:</b> đã xóa "+ok+"/"+toDelete.length+", lỗi "+fail+". Còn "+(rest?rest.length:0)+" giao dịch.";
+    btn.textContent="Đã xong";
+}
+
+init();
+</script>
+</body>
+</html>
