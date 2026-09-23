@@ -24,6 +24,7 @@ button.danger{background:#dc3545}
 <button onclick="qaSetVCB(6000000)">💱 VCB → 6.000.000đ (khôi phục)</button>
 <button onclick="qaTransfer()">🔁 Transfer QA 100.000đ VCB→ATM</button>
 <button onclick="qaDeleteTransfer()">🗑️ Xóa transfer QA vừa tạo</button>
+<button onclick="qaCreateBank('QA Link Test')">➕ Tạo account "QA Link Test" (bank, 0đ)</button>
 <button onclick="qaDeleteNwItem('QA BĐS')">🗑️ Xóa item "QA BĐS"</button>
 <button onclick="qaDeleteNwItem('QA Vay NH')">🗑️ Xóa item "QA Vay NH"</button>
 <button onclick="qaDeleteNwItem('QA ATM')">🗑️ Xóa item "QA ATM"</button>
@@ -77,10 +78,15 @@ async function qaTransfer(){
     log("Đã tạo transfer QA id="+lastTransferId);
 }
 async function qaDeleteTransfer(){
-    if(!lastTransferId){log("Chưa có transfer QA nào.");return;}
-    const {error}=await supabaseClient.rpc("delete_transfer",{p_tx_id:lastTransferId});
-    log(error?("LỖI: "+error.message):("Đã xóa transfer QA "+lastTransferId));
+    const {data:tx}=await supabaseClient.from("transactions").select("id").eq("user_id",uid).eq("description","QA transfer NW9").order("created_at",{ascending:false}).limit(1).maybeSingle();
+    if(!tx){log("Không tìm thấy transfer QA.");return;}
+    const {error}=await supabaseClient.rpc("delete_transfer",{p_tx_id:tx.id});
+    log(error?("LỖI: "+error.message):("Đã xóa transfer QA "+tx.id+" (tìm theo mô tả, không phụ thuộc biến tạm)"));
     lastTransferId=null;
+}
+async function qaCreateBank(name){
+    const {data,error}=await supabaseClient.from("accounts").insert({user_id:uid,name:name,type:"bank",balance:0}).select().single();
+    log(error?("LỖI: "+error.message):("Đã tạo account "+name+" id="+data.id));
 }
 async function qaDeleteNwItem(name){
     const {error}=await supabaseClient.from("net_worth_items").delete().eq("user_id",uid).eq("name",name);
