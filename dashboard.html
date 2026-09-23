@@ -38,6 +38,19 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 .filter-badge{display:inline-block;font-size:13px;font-weight:600;color:#0f766e;background:#ccfbf1;border-radius:20px;padding:4px 12px;margin-left:10px;vertical-align:middle}
 @media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}.account-grid{grid-template-columns:1fr 1fr}.nav-right{gap:10px}}
 @media(max-width:550px){.cards{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.form-group.full{grid-column:auto}.account-grid{grid-template-columns:1fr}.back-link{display:none}.welcome h1{font-size:25px}}
+<style>
+.nw-item{display:flex;align-items:center;justify-content:space-between;padding:14px;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:10px;background:#fff}
+.nw-item-left{display:flex;flex-direction:column;gap:4px}
+.nw-item-name{font-weight:700}
+.nw-item-meta{color:#64748b;font-size:13px}
+.nw-item-value{font-weight:700;font-size:18px;white-space:nowrap;margin-left:12px}
+.nw-chip{display:inline-block;font-size:12px;font-weight:600;border-radius:12px;padding:2px 10px;margin-left:8px;vertical-align:middle}
+.nw-chip.linked{background:#e0f2fe;color:#0369a1}
+.nw-chip.manual{background:#f1f5f9;color:#475569}
+.nw-warn{background:#fff7ed;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:10px 12px;font-size:14px;margin-top:12px;display:none}
+.nw-section-title{margin:22px 0 12px;font-size:17px}
+.nw-actions{display:flex;gap:8px;margin-top:8px}
+.nw-actions button{padding:6px 12px;font-size:13px}
 </style>
 </head>
 <body>
@@ -64,6 +77,13 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <div class="card"><div class="card-title">Tổng chi tiêu</div><div class="card-value expense" id="totalExpense">0 đ</div></div>
 <div class="card"><div class="card-title">Chênh lệch</div><div class="card-value balance" id="totalBalance">0 đ</div></div>
 <div class="card"><div class="card-title">Số giao dịch</div><div class="card-value" id="transactionCount">0</div></div>
+</div>
+
+<h2 style="margin:30px 0 16px;font-size:21px">💰 Tài sản &amp; Nợ</h2>
+<div class="cards" style="grid-template-columns:repeat(3,1fr)">
+<div class="card"><div class="card-title">Tổng tài sản</div><div class="card-value income" id="nwTotalAssets">0 đ</div></div>
+<div class="card"><div class="card-title">Tổng nợ</div><div class="card-value expense" id="nwTotalLiabilities">0 đ</div></div>
+<div class="card"><div class="card-title">Tài sản ròng</div><div class="card-value balance" id="nwNetWorth">0 đ</div></div>
 </div>
 
 <div class="section">
@@ -97,6 +117,57 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <div id="accountList" class="account-grid">
 <div class="empty">Chưa có tài khoản nào.</div>
 </div>
+</div>
+
+<div class="section">
+<h2>📋 Danh mục tài sản &amp; nợ</h2>
+<button class="add-btn" type="button" id="nwAddBtn" style="margin-top:0;">+ Thêm tài sản / khoản nợ</button>
+<form id="nwForm" style="display:none;margin-top:16px;">
+<div class="form-grid">
+<div class="form-group">
+<label for="nwType">Loại</label>
+<select id="nwType">
+<option value="asset">Tài sản</option>
+<option value="liability">Khoản nợ</option>
+</select>
+</div>
+<div class="form-group">
+<label for="nwName">Tên</label>
+<input id="nwName" placeholder="Ví dụ: Tiền gửi Vietcombank">
+</div>
+<div class="form-group">
+<label for="nwMode">Phương thức</label>
+<select id="nwMode">
+<option value="linked">Liên kết tài khoản</option>
+<option value="manual">Nhập giá trị thủ công</option>
+</select>
+</div>
+<div class="form-group" id="nwAccountGroup">
+<label for="nwAccount">Tài khoản liên kết</label>
+<select id="nwAccount"></select>
+</div>
+<div class="form-group" id="nwValueGroup" style="display:none;">
+<label for="nwValue">Giá trị (VNĐ)</label>
+<input id="nwValue" type="number" min="0" step="1000" placeholder="Ví dụ: 500000000">
+</div>
+<div class="form-group">
+<label for="nwCategory">Danh mục</label>
+<select id="nwCategory"></select>
+</div>
+<div class="form-group full">
+<label for="nwNotes">Ghi chú</label>
+<input id="nwNotes" placeholder="Không bắt buộc">
+</div>
+</div>
+<div class="nw-warn" id="nwWarn"></div>
+<button class="add-btn" type="submit" id="nwSubmitBtn">+ Thêm</button>
+<button class="add-btn" type="button" id="nwCancelBtn" style="background:#64748b;margin-left:8px;">Hủy</button>
+<div class="message" id="nwMessage"></div>
+</form>
+<h3 class="nw-section-title">Tài sản</h3>
+<div id="nwAssetList"><div class="empty">Chưa có tài sản nào.</div></div>
+<h3 class="nw-section-title">Khoản nợ</h3>
+<div id="nwLiabilityList"><div class="empty">Chưa có khoản nợ nào.</div></div>
 </div>
 
 <div class="section">
@@ -211,6 +282,15 @@ const supabaseClient=window.supabase.createClient(
 /* Ánh xạ id tài khoản -> tên, dùng để hiển thị chuyển khoản "Nguồn → Đích" */
 let accountNameById={};
 
+/* ============ TÀI SẢN & NỢ (NET WORTH) ============ */
+let nwItems=[];
+let accountsCache=[];
+let nwEditingId=null;
+const NW_CATEGORIES={
+    asset:["Cash & Bank","Real Estate","Vehicle","Other"],
+    liability:["Credit Card","Loan","Other"]
+};
+
 /* ============ BỘ LỌC & TÌM KIẾM GIAO DỊCH ============ */
 const FILTER_PAGE_SIZE=20;
 let allTransactions=[];
@@ -259,6 +339,7 @@ async function loadDashboard(){
 
     await loadAccounts(session.user.id);
     await loadTransactions(session.user.id);
+    await loadNetWorth(session.user.id);
 
     initTransactionFilters();
 }
@@ -282,6 +363,9 @@ async function loadAccounts(userId){
             '<div class="empty">Không thể tải tài khoản.</div>';
         return;
     }
+
+    accountsCache=data||[];
+    refreshNetWorthView();
 
     accountNameById={};
 
@@ -330,6 +414,7 @@ async function loadAccounts(userId){
     if(!data.length){
         list.innerHTML=
             '<div class="empty">Chưa có tài khoản nào.</div>';
+        refreshNetWorthView();
         return;
     }
 
@@ -390,6 +475,7 @@ async function loadAccounts(userId){
 
         list.appendChild(card);
     });
+    refreshNetWorthView();
 }
 
 
@@ -1016,6 +1102,36 @@ async function deleteAccount(account){
             count+
             " giao dịch (bao gồm chuyển khoản).\n\n"+
             "Bạn có thể sửa tên hoặc số dư thay vì xóa."
+        );
+
+        return;
+    }
+
+    /* Không cho xóa Account đang được Tài sản & Nợ liên kết (§6 plan) */
+    const {data:linkedItems,error:linkedError}=
+        await supabaseClient
+            .from("net_worth_items")
+            .select("id,name")
+            .eq("account_id",account.id)
+            .eq("user_id",session.user.id);
+
+    if(linkedError){
+        console.error(linkedError);
+        alert(
+            "Không thể kiểm tra liên kết Tài sản & Nợ của tài khoản."
+        );
+        return;
+    }
+
+    if(linkedItems&&linkedItems.length>0){
+
+        const names=linkedItems.map(i=>"\""+i.name+"\"").join(", ");
+
+        alert(
+            "Không thể xóa tài khoản \""+account.name+
+            "\" vì đang được liên kết với "+names+
+            " trong Tài sản & Nợ.\n\n"+
+            "Hãy xóa mục đó hoặc chuyển sang nhập thủ công trước khi xóa tài khoản."
         );
 
         return;
@@ -1840,6 +1956,374 @@ supabaseClient.auth.onAuthStateChange(
     }
 );
 
+
+/* =========================
+   TÀI SẢN & NỢ (NET WORTH)
+   Theo docs/ASSETS_LIABILITIES_PLAN.md (DB v1 đã LOCK):
+   - Không thay đổi schema/constraint/RLS/policy/trigger/RPC.
+   - Net Worth tính client-side từ accounts + net_worth_items.
+   - Không double-count: chỉ cộng giá trị các item, không cộng
+     toàn bộ accounts thêm lần nữa.
+========================= */
+
+function nwAccountById(id){
+    return accountsCache.find(a=>a.id===id)||null;
+}
+
+/* Giá trị của một item theo quy ước dấu đã khóa (§4 plan):
+   - linked asset     = account.balance (live, kể cả khi âm)
+   - linked liability = max(0, -account.balance)
+   - manual           = value (>= 0) */
+function nwItemValue(item){
+    if(item.account_id){
+        const acc=nwAccountById(item.account_id);
+        const bal=acc?Number(acc.balance||0):0;
+        if(item.type==="asset") return bal;
+        return Math.max(0,-bal);
+    }
+    return Number(item.value||0);
+}
+
+async function loadNetWorth(userId){
+    const {data,error}=await supabaseClient
+        .from("net_worth_items")
+        .select("*")
+        .eq("user_id",userId)
+        .order("created_at",{ascending:true});
+    if(error){
+        console.error(error);
+        return;
+    }
+    nwItems=data||[];
+    renderNetWorth();
+}
+
+/* Vẽ lại cards + danh sách; được gọi sau mỗi lần accounts đổi
+   (số dư đổi -> linked value đổi theo) và sau mỗi lần items đổi. */
+function refreshNetWorthView(){
+    if(!document.getElementById("nwTotalAssets")) return;
+    renderNetWorth();
+}
+
+function renderNetWorth(){
+    let assets=0,liabs=0;
+    nwItems.forEach(it=>{
+        const v=nwItemValue(it);
+        if(it.type==="asset") assets+=v; else liabs+=v;
+    });
+    const net=assets-liabs;
+    document.getElementById("nwTotalAssets").textContent=formatMoney(assets);
+    document.getElementById("nwTotalLiabilities").textContent=formatMoney(liabs);
+    const elN=document.getElementById("nwNetWorth");
+    elN.textContent=formatMoney(net);
+    elN.className="card-value "+(net<0?"expense":"balance");
+    renderNwList("asset",document.getElementById("nwAssetList"),"Chưa có tài sản nào.");
+    renderNwList("liability",document.getElementById("nwLiabilityList"),"Chưa có khoản nợ nào.");
+}
+
+function renderNwList(type,listEl,emptyText){
+    if(!listEl) return;
+    const items=nwItems.filter(i=>i.type===type);
+    if(!items.length){
+        listEl.innerHTML='<div class="empty">'+emptyText+'</div>';
+        return;
+    }
+    listEl.innerHTML="";
+    items.forEach(item=>{
+        const v=nwItemValue(item);
+        const row=document.createElement("div");
+        row.className="nw-item";
+
+        const left=document.createElement("div");
+        left.className="nw-item-left";
+
+        const name=document.createElement("div");
+        name.className="nw-item-name";
+        name.textContent=item.name;
+        const chip=document.createElement("span");
+        chip.className="nw-chip "+(item.account_id?"linked":"manual");
+        chip.textContent=item.account_id?"🔗 Liên kết":"✍️ Thủ công";
+        name.appendChild(chip);
+
+        const meta=document.createElement("div");
+        meta.className="nw-item-meta";
+        let metaText=item.category||"";
+        if(item.account_id){
+            const acc=nwAccountById(item.account_id);
+            const bal=acc?Number(acc.balance||0):0;
+            metaText+=(metaText?" · ":"")+"🔗 "+(acc?acc.name:"(tài khoản không còn)")+" · số dư "+formatMoney(bal);
+            if(item.type==="liability"&&bal>0){
+                metaText+=" · tài khoản đang dương nên nợ ghi nhận = 0";
+            }
+            if(item.type==="asset"&&bal<0){
+                metaText+=" · tài khoản đang âm";
+            }
+        }else if(item.notes){
+            metaText+=(metaText?" · ":"")+item.notes;
+        }
+        meta.textContent=metaText;
+
+        const actions=document.createElement("div");
+        actions.className="nw-actions";
+        const editBtn=document.createElement("button");
+        editBtn.type="button";
+        editBtn.className="add-btn";
+        editBtn.textContent="✏️ Sửa";
+        editBtn.onclick=()=>nwOpenForm(item);
+        const delBtn=document.createElement("button");
+        delBtn.type="button";
+        delBtn.className="add-btn";
+        delBtn.style.background="#dc3545";
+        delBtn.textContent="🗑️ Xóa";
+        delBtn.onclick=()=>nwDeleteItem(item);
+        actions.appendChild(editBtn);
+        actions.appendChild(delBtn);
+
+        left.appendChild(name);
+        left.appendChild(meta);
+        left.appendChild(actions);
+
+        const val=document.createElement("div");
+        val.className="nw-item-value";
+        val.textContent=formatMoney(v);
+
+        row.appendChild(left);
+        row.appendChild(val);
+        listEl.appendChild(row);
+    });
+}
+
+function nwCategoryOptions(){
+    const type=document.getElementById("nwType").value;
+    const sel=document.getElementById("nwCategory");
+    sel.innerHTML="";
+    NW_CATEGORIES[type].forEach(c=>{
+        const o=document.createElement("option");
+        o.value=c;
+        o.textContent=c;
+        sel.appendChild(o);
+    });
+}
+
+/* Dropdown tài khoản: chỉ hiện các account chưa bị link
+   (ngoại trừ account của item đang sửa). */
+function nwRefreshAccountOptions(keepId){
+    const sel=document.getElementById("nwAccount");
+    sel.innerHTML="";
+    const linkedIds=new Set(
+        nwItems.filter(i=>i.account_id&&i.id!==nwEditingId).map(i=>i.account_id)
+    );
+    let count=0;
+    accountsCache.forEach(a=>{
+        if(linkedIds.has(a.id)) return;
+        const o=document.createElement("option");
+        o.value=a.id;
+        o.textContent=a.name+" ("+formatMoney(Number(a.balance||0))+")";
+        o.dataset.accType=a.type;
+        o.dataset.balance=a.balance;
+        sel.appendChild(o);
+        count++;
+    });
+    if(!count){
+        const o=document.createElement("option");
+        o.value="";
+        o.textContent="-- Không còn tài khoản trống --";
+        sel.appendChild(o);
+    }
+    if(keepId) sel.value=keepId;
+}
+
+function nwShowWarn(msg){
+    const w=document.getElementById("nwWarn");
+    if(msg){ w.textContent=msg; w.style.display="block"; }
+    else{ w.textContent=""; w.style.display="none"; }
+}
+
+/* Cảnh báo theo §4.2/§4.4 plan (chỉ cảnh báo, không ép đổi loại) */
+function nwUpdateWarn(){
+    const mode=document.getElementById("nwMode").value;
+    const type=document.getElementById("nwType").value;
+    if(mode!=="linked"){
+        nwShowWarn("");
+        return;
+    }
+    const opt=document.getElementById("nwAccount").selectedOptions[0];
+    if(!opt||!opt.value){ nwShowWarn(""); return; }
+    const bal=Number(opt.dataset.balance||0);
+    if(type==="asset"&&bal<0){
+        nwShowWarn("⚠️ Tài khoản đang âm "+formatMoney(bal)+". Giá trị tài sản liên kết sẽ âm theo. Bạn có thể cân nhắc đổi sang Khoản nợ.");
+    }else if(type==="liability"&&bal>0){
+        nwShowWarn("⚠️ Tài khoản đang dương "+formatMoney(bal)+" nên khoản nợ được ghi nhận = 0 (không ghi nợ âm).");
+    }else{
+        nwShowWarn("");
+    }
+}
+
+function nwOnModeChanged(){
+    const mode=document.getElementById("nwMode").value;
+    document.getElementById("nwAccountGroup").style.display=mode==="linked"?"":"none";
+    document.getElementById("nwValueGroup").style.display=mode==="manual"?"":"none";
+    nwUpdateWarn();
+}
+
+function nwOnTypeChanged(){
+    nwCategoryOptions();
+    nwUpdateWarn();
+}
+
+/* Gợi ý loại theo account (plan §8): credit -> liability.
+   Chỉ gợi ý khi vừa đổi tài khoản; người dùng được override. */
+function nwOnAccountChanged(){
+    const opt=document.getElementById("nwAccount").selectedOptions[0];
+    const typeSel=document.getElementById("nwType");
+    if(opt&&opt.value){
+        if(opt.dataset.accType==="credit"&&typeSel.value!=="liability"){
+            typeSel.value="liability";
+            nwCategoryOptions();
+        }else if(opt.dataset.accType!=="credit"&&typeSel.value!=="asset"){
+            typeSel.value="asset";
+            nwCategoryOptions();
+        }
+    }
+    nwUpdateWarn();
+}
+
+function nwOpenForm(item){
+    nwEditingId=item?item.id:null;
+    const form=document.getElementById("nwForm");
+    document.getElementById("nwMessage").textContent="";
+    if(item){
+        document.getElementById("nwType").value=item.type;
+        document.getElementById("nwName").value=item.name||"";
+        document.getElementById("nwMode").value=item.account_id?"linked":"manual";
+        document.getElementById("nwNotes").value=item.notes||"";
+        nwCategoryOptions();
+        if(item.category) document.getElementById("nwCategory").value=item.category;
+        nwRefreshAccountOptions(item.account_id||null);
+        document.getElementById("nwValue").value=item.account_id?"":(item.value??"");
+        document.getElementById("nwSubmitBtn").textContent="💾 Lưu thay đổi";
+    }else{
+        document.getElementById("nwType").value="asset";
+        document.getElementById("nwName").value="";
+        document.getElementById("nwMode").value="linked";
+        document.getElementById("nwNotes").value="";
+        document.getElementById("nwValue").value="";
+        nwCategoryOptions();
+        nwRefreshAccountOptions(null);
+        document.getElementById("nwSubmitBtn").textContent="+ Thêm";
+    }
+    nwOnModeChanged();
+    form.style.display="block";
+    form.scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+function nwCloseForm(){
+    document.getElementById("nwForm").style.display="none";
+    document.getElementById("nwMessage").textContent="";
+    nwEditingId=null;
+}
+
+async function nwSubmit(e){
+    e.preventDefault();
+    const session=await getSession();
+    if(!session){
+        alert("Phiên đăng nhập đã hết.");
+        return;
+    }
+    const msg=document.getElementById("nwMessage");
+    const type=document.getElementById("nwType").value;
+    const name=document.getElementById("nwName").value.trim();
+    const mode=document.getElementById("nwMode").value;
+    if(!name){
+        msg.textContent="Vui lòng nhập tên.";
+        msg.style.color="#dc3545";
+        return;
+    }
+    const payload={
+        user_id:session.user.id,
+        name:name,
+        type:type,
+        category:document.getElementById("nwCategory").value,
+        notes:document.getElementById("nwNotes").value.trim()||null
+    };
+    if(mode==="linked"){
+        const accountId=document.getElementById("nwAccount").value;
+        if(!accountId){
+            msg.textContent="Hãy chọn tài khoản để liên kết (hoặc chuyển sang nhập thủ công).";
+            msg.style.color="#dc3545";
+            return;
+        }
+        payload.account_id=accountId;
+        payload.value=null;
+    }else{
+        const raw=document.getElementById("nwValue").value;
+        const v=Number(raw);
+        if(raw===""||isNaN(v)||v<0){
+            msg.textContent="Giá trị thủ công phải là số ≥ 0.";
+            msg.style.color="#dc3545";
+            return;
+        }
+        payload.account_id=null;
+        payload.value=v;
+    }
+
+    let error=null;
+    if(nwEditingId){
+        /* Manual <-> Linked: payload đã set đúng XOR (account_id/value),
+           không để trạng thái trung gian vi phạm constraint (§10 plan). */
+        const res=await supabaseClient
+            .from("net_worth_items")
+            .update(payload)
+            .eq("id",nwEditingId)
+            .eq("user_id",session.user.id);
+        error=res.error;
+    }else{
+        const res=await supabaseClient
+            .from("net_worth_items")
+            .insert(payload);
+        error=res.error;
+    }
+    if(error){
+        console.error(error);
+        msg.textContent="Không thể lưu: "+error.message;
+        msg.style.color="#dc3545";
+        return;
+    }
+    msg.textContent="✓ Đã lưu.";
+    msg.style.color="#159957";
+    await loadNetWorth(session.user.id);
+    nwCloseForm();
+}
+
+async function nwDeleteItem(item){
+    const session=await getSession();
+    if(!session){
+        alert("Phiên đăng nhập đã hết.");
+        return;
+    }
+    const ok=confirm(
+        'Xóa "'+item.name+'" khỏi Tài sản & Nợ?\n\nTài khoản và giao dịch không bị ảnh hưởng.'
+    );
+    if(!ok) return;
+    const {error}=await supabaseClient
+        .from("net_worth_items")
+        .delete()
+        .eq("id",item.id)
+        .eq("user_id",session.user.id);
+    if(error){
+        console.error(error);
+        alert("Không thể xóa: "+error.message);
+        return;
+    }
+    await loadNetWorth(session.user.id);
+}
+
+document.getElementById("nwAddBtn").addEventListener("click",()=>nwOpenForm(null));
+document.getElementById("nwCancelBtn").addEventListener("click",nwCloseForm);
+document.getElementById("nwForm").addEventListener("submit",nwSubmit);
+document.getElementById("nwType").addEventListener("change",nwOnTypeChanged);
+document.getElementById("nwMode").addEventListener("change",nwOnModeChanged);
+document.getElementById("nwAccount").addEventListener("change",nwOnAccountChanged);
 
 loadDashboard();
 </script>
