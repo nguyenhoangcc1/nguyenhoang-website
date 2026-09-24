@@ -83,6 +83,7 @@ section[id]{scroll-margin-top:100px}
 .stats-pickers{margin-bottom:6px}
 .stats-pickers input{border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;font-size:14px}
 .stats-note{color:#64748b;font-size:13px;margin:8px 0}
+.stats-delta{color:#64748b;font-size:12px;margin-top:6px;min-height:15px}
 .stats-chart{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:6px;overflow:hidden}
 .stats-chart svg{width:100%;height:auto;display:block}
 .stats-legend{display:flex;gap:16px;font-size:13px;color:#475569;margin-top:8px}
@@ -160,12 +161,15 @@ section[id]{scroll-margin-top:100px}
 </div>
 <div id="statsCustomNote" class="stats-note" style="display:none"></div>
 <div class="cards">
-<div class="card"><div class="card-title">Tổng thu</div><div class="card-value income" id="statsIncome">0 đ</div></div>
-<div class="card"><div class="card-title">Tổng chi</div><div class="card-value expense" id="statsExpense">0 đ</div></div>
-<div class="card"><div class="card-title">Chênh lệch</div><div class="card-value balance" id="statsDiff">0 đ</div></div>
+<div class="card"><div class="card-title">Tổng thu</div><div class="card-value income" id="statsIncome">0 đ</div><div class="stats-delta" id="deltaIncome"></div></div>
+<div class="card"><div class="card-title">Tổng chi</div><div class="card-value expense" id="statsExpense">0 đ</div><div class="stats-delta" id="deltaExpense"></div></div>
+<div class="card"><div class="card-title">Chênh lệch</div><div class="card-value balance" id="statsDiff">0 đ</div><div class="stats-delta" id="deltaDiff"></div></div>
 <div class="card"><div class="card-title">Số giao dịch</div><div class="card-value" id="statsCount">0</div></div>
+<div class="card"><div class="card-title">Tỷ lệ tiết kiệm</div><div class="card-value" id="statsSavingsRate">—</div></div>
+<div class="card"><div class="card-title">Chi tiêu TB/ngày</div><div class="card-value" id="statsAvgDaily">0 đ</div></div>
 </div>
 <div id="statsChart" class="stats-chart"></div>
+<div id="statsCumulativeChart" class="stats-chart"></div>
 <h3 class="nw-section-title" style="margin-top:18px;">Theo danh mục</h3>
 <div id="categoryStats"><div class="empty">Chưa có dữ liệu.</div></div>
 </div>
@@ -1673,9 +1677,17 @@ function isFiltering(){
 
 function applyFilters(){
     const [from,to]=resolveDateRange();
+    return filterByRange(allTransactions,from,to);
+}
+
+/* Dashboard v2 §B: lọc theo range tường minh cho kỳ trước (derived từ
+   currentFilters, không phải state mới). Logic type/account/category/search
+   GIỐNG HỆT applyFilters — chỉ khác khoảng ngày truyền vào. Không thay đổi
+   hành vi v1. */
+function filterByRange(list,from,to){
     const q=normSearch(currentFilters.search.trim());
 
-    return allTransactions.filter(t=>{
+    return list.filter(t=>{
         /* 1. Loại giao dịch */
         if(currentFilters.type!=="all"&&t.type!==currentFilters.type){
             return false;
@@ -1841,6 +1853,7 @@ function renderStats(filtered){
     document.getElementById("statsDiff").textContent=formatMoney(inc-exp);
     document.getElementById("statsCount").textContent=filtered.length;
     renderStatsChart(filtered);
+    renderStatsV2(filtered);
 }
 
 function statsBuckets(filtered){
@@ -1928,6 +1941,222 @@ function drawGroupedBars(buckets){
     });
     s+='</svg>';
     return s;
+}
+
+/* ============ Dashboard & Statistics v2 — A/B/C ============
+   Additive-only: không sửa logic/layout/wording của v1. Mọi chỉ số tính
+   client-side từ transactions trong kỳ; Transfer loại khỏi thu/chi (chỉ
+   tính vào Số giao dịch v1); mọi ranh giới ngày dùng +07; không đụng DB. */
+
+/* --- Date helpers: làm việc trên chuỗi YYYY-MM-DD, không qua TZ --- */
+function ymdToUtcMs(ymd){
+    const p=ymd.split("-");
+    return Date.UTC(Number(p[0]),Number(p[1])-1,Number(p[2]));
+}
+function utcMsToYmd(ms){
+    const d=new Date(ms);
+    return d.getUTCFullYear()+"-"+
+        String(d.getUTCMonth()+1).padStart(2,"0")+"-"+
+        String(d.getUTCDate()).padStart(2,"0");
+}
+function addDaysYmd(ymd,n){
+    return utcMsToYmd(ymdToUtcMs(ymd)+n*86400000);
+}
+/* Số ngày inclusive của [a,b] — V2-10: custom range tính cả start lẫn end */
+function daysInclusive(a,b){
+    return Math.round((ymdToUtcMs(b)-ymdToUtcMs(a))/86400000)+1;
+}
+function isFullMonthRange(from,to){
+    if(!from||!to){ return false; }
+    const r=monthRangePlus7(from.slice(0,7));
+    return from===r[0]&&to===r[1];
+}
+function isFullYearRange(from,to){
+    if(!from||!to){ return false; }
+    const y=from.slice(0,4);
+    return from===y+"-01-01"&&to===y+"-12-31";
+}
+function prevMonthRange(from){
+    let y=Number(from.slice(0,4)), m=Number(from.slice(5,7));
+    m--; if(m<1){ m=12; y--; }
+    return monthRangePlus7(y+"-"+String(m).padStart(2,"0"));
+}
+
+/* V2-9: previousRange là derived value từ currentFilters — KHÔNG phải
+   state độc lập. Trả về [pFrom,pTo], hoặc null khi kỳ hiện tại không có
+   biên ngày (chế độ "tất cả thời gian"). */
+function derivePreviousRange(){
+    const r=resolveDateRange();
+    const from=r[0], to=r[1];
+    if(!from||!to){ return null; }
+    if(from===to){
+        const p=addDaysYmd(from,-1);
+        return [p,p];
+    }
+    if(isFullMonthRange(from,to)){
+        return prevMonthRange(from);
+    }
+    if(isFullYearRange(from,to)){
+        const y=String(Number(from.slice(0,4))-1);
+        return [y+"-01-01",y+"-12-31"];
+    }
+    const n=daysInclusive(from,to);
+    return [addDaysYmd(from,-n),addDaysYmd(from,-1)];
+}
+
+/* Gom thu/chi kèm cờ "có dữ liệu qualifying" — để phân biệt "kỳ trước
+   không có dữ liệu" (hiện "kỳ trước: —") với "có dữ liệu nhưng tổng = 0"
+   (hiện Δ tuyệt đối). KHÔNG được suy hasData từ tổng reduce. */
+function sumIncomeExpense(list){
+    let inc=0, exp=0, hasIncome=false, hasExpense=false;
+    list.forEach(t=>{
+        const a=Number(t.amount);
+        if(t.type==="income"){ inc+=a; hasIncome=true; }
+        else if(t.type==="expense"){ exp+=a; hasExpense=true; }
+    });
+    return {inc:inc,exp:exp,hasIncome:hasIncome,hasExpense:hasExpense};
+}
+
+function fmtPct(x){
+    return x.toLocaleString("vi-VN",
+        {minimumFractionDigits:1,maximumFractionDigits:1})+"%";
+}
+function fmtSigned(amount){
+    const abs=new Intl.NumberFormat("vi-VN").format(Math.abs(amount))+" đ";
+    if(amount>0){ return "+"+abs; }
+    if(amount<0){ return "-"+abs; }
+    return abs;
+}
+
+/* Số ngày của kỳ hiện tại cho "Chi tiêu TB/ngày".
+   Kỳ không biên ("tất cả thời gian"): dùng span dữ liệu của kỳ. */
+function statsPeriodDays(filtered){
+    const r=resolveDateRange();
+    let from=r[0], to=r[1];
+    if(!from||!to){
+        let mn=null, mx=null;
+        filtered.forEach(t=>{
+            const d=t.transaction_date;
+            if(!d){ return; }
+            if(!mn||d<mn){ mn=d; }
+            if(!mx||d>mx){ mx=d; }
+        });
+        if(!mn||!mx){ return 0; }
+        from=mn; to=mx;
+    }
+    return daysInclusive(from,to);
+}
+
+/* §B.4: dòng delta cho 1 card tiền.
+   - previous không có qualifying data → "kỳ trước: —" (không được biến
+     thành Δ 0 đ chỉ vì reduce ra tổng bằng 0)
+   - có dữ liệu nhưng giá trị = 0 → chỉ hiện Δ tuyệt đối, không %
+   - còn lại → Δ tuyệt đối + % */
+function renderDelta(elId,cur,prev){
+    const el=document.getElementById(elId);
+    if(!prev.hasData){
+        el.textContent="kỳ trước: —";
+        return;
+    }
+    const d=cur-prev.value;
+    let txt=fmtSigned(d)+" so với kỳ trước";
+    if(prev.value!==0){
+        txt=fmtSigned(d)+" ("+fmtPct(d/prev.value*100)+") so với kỳ trước";
+    }
+    el.textContent=txt;
+}
+
+/* Vẽ biểu đồ đường SVG cho dòng tiền lũy kế — hand-rolled, không CDN.
+   V2-8: nhãn bắt buộc "không phải số dư tài khoản" luôn hiển thị. */
+function drawCumulativeLine(days,cum){
+    const W=720,H=250,padL=14,padR=64,padT=18,padB=30;
+    const n=days.length;
+    /* Điểm 0 ở đầu kỳ + lũy kế sau mỗi ngày → n+1 điểm */
+    const vals=[0].concat(cum);
+    let minY=Math.min.apply(null,vals), maxY=Math.max.apply(null,vals);
+    if(minY===maxY){ minY-=1; maxY+=1; } /* C-EDGE-2: tránh chia cho 0 */
+    const plotW=W-padL-padR, plotH=H-padT-padB;
+    const yb=H-padB;
+    const X=i=>padL+plotW*(i/n);
+    const Y=v=>padT+plotH*(1-(v-minY)/(maxY-minY));
+    const y0=Y(0);
+    let s='<svg viewBox="0 0 '+W+' '+H+'" role="img">';
+    s+='<line x1="'+padL+'" y1="'+y0.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y0.toFixed(1)+'" stroke="#cbd5e1" stroke-dasharray="4 3"/>';
+    s+='<text x="'+(W-padR+4)+'" y="'+(padT+4)+'" font-size="11" fill="#94a3b8">'+formatMoney(maxY)+'</text>';
+    s+='<text x="'+(W-padR+4)+'" y="'+(yb+4)+'" font-size="11" fill="#94a3b8">'+formatMoney(minY)+'</text>';
+    const pts=vals.map((v,i)=>X(i).toFixed(1)+","+Y(v).toFixed(1)).join(" ");
+    s+='<polyline points="'+pts+'" fill="none" stroke="#2864e8" stroke-width="2"/>';
+    vals.forEach((v,i)=>{
+        s+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(v).toFixed(1)+'" r="3" fill="#2864e8"/>';
+    });
+    const step=n>20?Math.ceil(n/15):1;
+    for(let i=0;i<n;i+=step){
+        const lab=n>62?days[i].slice(8,10)+"/"+days[i].slice(5,7):days[i].slice(8,10);
+        s+='<text x="'+X(i+1).toFixed(1)+'" y="'+(H-10)+'" text-anchor="middle" font-size="11" fill="#64748b">'+lab+'</text>';
+    }
+    s+='</svg>';
+    return s;
+}
+
+function renderCumulativeChart(filtered){
+    const el=document.getElementById("statsCumulativeChart");
+    const label='<div class="stats-note">Dòng tiền lũy kế trong kỳ — không phải số dư tài khoản.</div>';
+    const r=resolveDateRange();
+    let from=r[0], to=r[1];
+    if(!from||!to){
+        let mn=null, mx=null;
+        filtered.forEach(t=>{
+            const d=t.transaction_date;
+            if(!d){ return; }
+            if(!mn||d<mn){ mn=d; }
+            if(!mx||d>mx){ mx=d; }
+        });
+        from=mn; to=mx;
+    }
+    /* T9: kỳ rỗng → empty state, không vẽ đường */
+    if(!from||!to||filtered.length===0){
+        el.innerHTML=label+'<div class="empty">Chưa có dữ liệu.</div>';
+        return;
+    }
+    const netByDay={};
+    filtered.forEach(t=>{
+        const d=t.transaction_date;
+        if(!d||d<from||d>to){ return; }
+        const a=Number(t.amount);
+        const v=t.type==="income"?a:(t.type==="expense"?-a:0);
+        netByDay[d]=(netByDay[d]||0)+v;
+    });
+    const days=[], cum=[];
+    let c=0;
+    for(let d=from;;d=addDaysYmd(d,1)){
+        c+=(netByDay[d]||0);
+        days.push(d); cum.push(c);
+        if(d===to){ break; }
+    }
+    el.innerHTML=label+drawCumulativeLine(days,cum);
+}
+
+function renderStatsV2(filtered){
+    /* ---- A. 2 KPI mới ---- */
+    const s=sumIncomeExpense(filtered);
+    const srEl=document.getElementById("statsSavingsRate");
+    /* T2: Tổng thu = 0 → "—", không NaN/Infinity. Chi > Thu → số âm. */
+    srEl.textContent=(s.inc===0)?"—":fmtPct((s.inc-s.exp)/s.inc*100);
+    const days=statsPeriodDays(filtered);
+    document.getElementById("statsAvgDaily").textContent=
+        formatMoney(days>0?s.exp/days:0);
+
+    /* ---- B. Delta so với kỳ trước (trên 3 cards tiền) ---- */
+    const pr=derivePreviousRange();
+    const ps=pr?sumIncomeExpense(filterByRange(allTransactions,pr[0],pr[1]))
+               :{inc:0,exp:0,hasIncome:false,hasExpense:false};
+    renderDelta("deltaIncome",s.inc,{value:ps.inc,hasData:!!(pr&&ps.hasIncome)});
+    renderDelta("deltaExpense",s.exp,{value:ps.exp,hasData:!!(pr&&ps.hasExpense)});
+    renderDelta("deltaDiff",s.inc-s.exp,
+        {value:ps.inc-ps.exp,hasData:!!(pr&&(ps.hasIncome||ps.hasExpense))});
+
+    /* ---- C. Biểu đồ dòng tiền lũy kế ---- */
+    renderCumulativeChart(filtered);
 }
 
 function initStats(){
