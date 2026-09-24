@@ -9,7 +9,7 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f5f7fb;color:#172033}
 a{text-decoration:none;color:inherit}
-.header{background:#fff;border-bottom:1px solid #e5e7eb;position:sticky;top:0;z-index:10}
+.header{background:#fff;border-bottom:1px solid #e5e7eb}
 .nav{width:90%;max-width:1100px;margin:auto;height:70px;display:flex;align-items:center;justify-content:space-between}
 .logo{font-size:23px;font-weight:700}.logo span{color:#2864e8}
 .nav-right{display:flex;align-items:center;gap:20px}.back-link{color:#475569;font-size:14px}
@@ -152,95 +152,6 @@ section[id]{scroll-margin-top:100px}
 <div id="categoryStats"><div class="empty">Chưa có dữ liệu.</div></div>
 </div>
 </section>
-<section id="manage" class="section">
-<div class="tier-label">QUẢN LÝ TÀI CHÍNH</div>
-<section id="accounts" class="subsection">
-<h2>🏦 Tài khoản của tôi</h2>
-<p class="concept-hint">Tài khoản cho biết tiền của bạn đang nằm ở đâu — theo dõi dòng tiền ra vào.</p>
-<p style="color:#64748b;margin-top:-8px">Ví dụ: Tiền mặt, Vietcombank, BIDV, thẻ tín dụng...</p>
-  <button class="add-btn" type="button" onclick="document.getElementById('accountForm').style.display='block';">+ Thêm tài khoản</button>
-<form id="accountForm" style="display:none;">
-<div class="form-grid">
-<div class="form-group">
-<label for="accountName">Tên tài khoản</label>
-<input id="accountName" placeholder="Ví dụ: Tiền mặt" required>
-</div>
-<div class="form-group">
-<label for="accountType">Loại tài khoản</label>
-<select id="accountType">
-<option value="cash">Tiền mặt</option>
-<option value="bank">Ngân hàng</option>
-<option value="credit">Thẻ tín dụng</option>
-<option value="investment">Đầu tư</option>
-<option value="other">Khác</option>
-</select>
-</div>
-<div class="form-group">
-<label for="accountBalance">Số dư hiện tại (VNĐ)</label>
-<input id="accountBalance" type="number" min="0" value="0" placeholder="Ví dụ: 5000000">
-</div>
-</div>
-<button class="add-btn" type="submit">+ Thêm tài khoản</button>
-<div class="message" id="accountMessage"></div>
-</form>
-<div id="accountList" class="account-grid">
-<div class="empty">Chưa có tài khoản nào.</div>
-</div>
-</section>
-
-<section id="networth" class="subsection">
-<h2>📋 Danh mục tài sản &amp; nợ</h2>
-<p class="concept-hint">Tài sản &amp; Nợ cho biết bạn thực sự sở hữu bao nhiêu và đang nợ bao nhiêu — tài sản ròng.</p>
-<button class="add-btn" type="button" id="nwAddBtn" style="margin-top:0;">+ Thêm tài sản / khoản nợ</button>
-<form id="nwForm" style="display:none;margin-top:16px;">
-<div class="form-grid">
-<div class="form-group">
-<label for="nwType">Loại</label>
-<select id="nwType">
-<option value="asset">Tài sản</option>
-<option value="liability">Khoản nợ</option>
-</select>
-</div>
-<div class="form-group">
-<label for="nwName">Tên</label>
-<input id="nwName" placeholder="Ví dụ: Tiền gửi Vietcombank">
-</div>
-<div class="form-group">
-<label for="nwMode">Phương thức</label>
-<select id="nwMode">
-<option value="linked">Liên kết tài khoản</option>
-<option value="manual">Nhập giá trị thủ công</option>
-</select>
-</div>
-<div class="form-group" id="nwAccountGroup">
-<label for="nwAccount">Tài khoản liên kết</label>
-<select id="nwAccount"></select>
-</div>
-<div class="form-group" id="nwValueGroup" style="display:none;">
-<label for="nwValue">Giá trị (VNĐ)</label>
-<input id="nwValue" type="number" min="0" step="1000" placeholder="Ví dụ: 500000000">
-</div>
-<div class="form-group">
-<label for="nwCategory">Danh mục</label>
-<select id="nwCategory"></select>
-</div>
-<div class="form-group full">
-<label for="nwNotes">Ghi chú</label>
-<input id="nwNotes" placeholder="Không bắt buộc">
-</div>
-</div>
-<div class="nw-warn" id="nwWarn"></div>
-<button class="add-btn" type="submit" id="nwSubmitBtn">+ Thêm</button>
-<button class="add-btn secondary" type="button" id="nwCancelBtn">Hủy</button>
-<div class="message" id="nwMessage"></div>
-</form>
-<h3 class="nw-section-title">Tài sản</h3>
-<div id="nwAssetList"><div class="empty">Chưa có tài sản nào.</div></div>
-<h3 class="nw-section-title">Khoản nợ</h3>
-<div id="nwLiabilityList"><div class="empty">Chưa có khoản nợ nào.</div></div>
-</section>
-</section>
-
 <section id="action" class="section">
 <div class="tier-label">THAO TÁC</div>
 <h2>⚡ Giao dịch</h2>
@@ -290,11 +201,100 @@ section[id]{scroll-margin-top:100px}
 <div class="message" id="formMessage"></div>
 </form>
 </section>
+<section id="manage" class="section">
+<div class="tier-label">QUẢN LÝ TÀI CHÍNH</div>
+<section id="accounts" class="subsection">
+<h2>🏦 Tài khoản của tôi</h2>
+<p class="concept-hint">Tài khoản cho biết tiền của bạn đang nằm ở đâu — theo dõi dòng tiền ra vào.</p>
+<p style="color:#64748b;margin-top:-8px">Ví dụ: Tiền mặt, Vietcombank, BIDV, thẻ tín dụng...</p>
+  <button class="add-btn" type="button" onclick="document.getElementById('accountForm').style.display='block';">+ Thêm tài khoản</button>
+<form id="accountForm" style="display:none;">
+<div class="form-grid">
+<div class="form-group">
+<label for="accountName">Tên tài khoản</label>
+<input id="accountName" placeholder="Ví dụ: Tiền mặt" required>
+</div>
+<div class="form-group">
+<label for="accountType">Loại tài khoản</label>
+<select id="accountType">
+<option value="cash">Tiền mặt</option>
+<option value="bank">Ngân hàng</option>
+<option value="credit">Thẻ tín dụng</option>
+<option value="investment">Đầu tư</option>
+<option value="other">Khác</option>
+</select>
+</div>
+<div class="form-group">
+<label for="accountBalance">Số dư hiện tại (VNĐ)</label>
+<input id="accountBalance" type="number" min="0" value="0" placeholder="Ví dụ: 5000000">
+</div>
+</div>
+<button class="add-btn" type="submit">+ Thêm tài khoản</button>
+<div class="message" id="accountMessage"></div>
+</form>
+<div id="accountList" class="account-grid">
+<div class="empty">Chưa có tài khoản nào.</div>
+</div>
+</section>
+
+<section id="networth" class="subsection">
+<h2>📋 Danh mục tài sản &amp; nợ</h2>
+<p class="concept-hint">Tài sản &amp; Nợ cho biết bạn thực sự sở hữu bao nhiêu và đang nợ bao nhiêu — tài sản ròng.</p>
+<button class="add-btn" type="button" id="nwAddBtn">+ Thêm tài sản / khoản nợ</button>
+<form id="nwForm" style="display:none;margin-top:16px;">
+<div class="form-grid">
+<div class="form-group">
+<label for="nwType">Loại</label>
+<select id="nwType">
+<option value="asset">Tài sản</option>
+<option value="liability">Khoản nợ</option>
+</select>
+</div>
+<div class="form-group">
+<label for="nwName">Tên</label>
+<input id="nwName" placeholder="Ví dụ: Tiền gửi Vietcombank">
+</div>
+<div class="form-group">
+<label for="nwMode">Phương thức</label>
+<select id="nwMode">
+<option value="linked">Liên kết tài khoản</option>
+<option value="manual">Nhập giá trị thủ công</option>
+</select>
+</div>
+<div class="form-group" id="nwAccountGroup">
+<label for="nwAccount">Tài khoản liên kết</label>
+<select id="nwAccount"></select>
+</div>
+<div class="form-group" id="nwValueGroup" style="display:none;">
+<label for="nwValue">Giá trị (VNĐ)</label>
+<input id="nwValue" type="number" min="0" step="1000" placeholder="Ví dụ: 500000000">
+</div>
+<div class="form-group">
+<label for="nwCategory">Danh mục</label>
+<select id="nwCategory"></select>
+</div>
+<div class="form-group full">
+<label for="nwNotes">Ghi chú</label>
+<input id="nwNotes" placeholder="Không bắt buộc">
+</div>
+</div>
+<div class="nw-warn" id="nwWarn"></div>
+<button class="add-btn" type="submit" id="nwSubmitBtn">+ Thêm</button>
+<button class="add-btn secondary" type="button" id="nwCancelBtn">Hủy</button>
+<div class="message" id="nwMessage"></div>
+</form>
+<h3 class="nw-section-title">Tài sản</h3>
+<div id="nwAssetList"><div class="empty">Chưa có tài sản nào.</div></div>
+<h3 class="nw-section-title">Khoản nợ</h3>
+<div id="nwLiabilityList"><div class="empty">Chưa có khoản nợ nào.</div></div>
+</section>
+</section>
+
 
 <section id="categories" class="section">
 <div class="tier-label">DỮ LIỆU</div>
 <h2>🗂️ Danh mục thu / chi</h2>
-<button class="add-btn" type="button" id="catAddBtn" style="margin-top:0;">+ Thêm danh mục</button>
+<button class="add-btn" type="button" id="catAddBtn">+ Thêm danh mục</button>
 <form id="catForm" style="display:none;margin-top:16px;">
 <div class="form-grid">
 <div class="form-group">
