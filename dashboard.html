@@ -58,6 +58,23 @@ section[id]{scroll-margin-top:100px}
 .nw-chip{display:inline-block;font-size:12px;font-weight:600;border-radius:12px;padding:2px 10px;margin-left:8px;vertical-align:middle}
 .nw-chip.linked{background:#e0f2fe;color:#0369a1}
 .nw-chip.manual{background:#f1f5f9;color:#475569}
+/* Mục tiêu tài chính (Financial Goals V1) */
+.goal-card{border:1px solid #e5e7eb;border-radius:10px;margin-bottom:12px;background:#fff;padding:14px}
+.goal-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.goal-card-name{font-weight:700;font-size:16px}
+.goal-badge{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.goal-badge.done{background:#dcfce7;color:#166534}
+.goal-badge.overdue{background:#fee2e2;color:#991b1b}
+.goal-badge.active{background:#dbeafe;color:#1e40af}
+.goal-progress{height:10px;background:#f1f5f9;border-radius:999px;margin:10px 0 6px;overflow:hidden}
+.goal-progress-bar{height:100%;background:#2563eb;border-radius:999px}
+.goal-meta{color:#64748b;font-size:13px}
+.goal-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.goal-actions .add-btn{margin-top:0;font-size:13px;padding:6px 12px}
+.goal-contrib{margin-top:12px;border-top:1px dashed #e5e7eb;padding-top:10px}
+.goal-contrib-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:14px}
+.goal-contrib-row:last-child{border-bottom:none}
+.contrib-warn{font-style:italic;color:#64748b;font-size:13px;margin:8px 0}
 .nw-warn{background:#fff7ed;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:10px 12px;font-size:14px;margin-top:12px;display:none}
 .nw-section-title{margin:22px 0 12px;font-size:17px}
 .stats-tabs{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
@@ -95,6 +112,7 @@ section[id]{scroll-margin-top:100px}
 <a href="#transactions">Giao dịch</a>
 <a href="#accounts">Tài khoản</a>
 <a href="#networth">Tài sản &amp; Nợ</a>
+<a href="#goals">Mục tiêu</a>
 <a href="#categories">Danh mục</a>
 </nav>
 <div class="nav-right">
@@ -287,6 +305,36 @@ section[id]{scroll-margin-top:100px}
 <div id="nwAssetList"><div class="empty">Chưa có tài sản nào.</div></div>
 <h3 class="nw-section-title">Khoản nợ</h3>
 <div id="nwLiabilityList"><div class="empty">Chưa có khoản nợ nào.</div></div>
+</section>
+
+<section id="goals" class="subsection">
+<h2>🎯 Mục tiêu tài chính</h2>
+<p class="concept-hint">Mục tiêu tài chính là kế hoạch tích lũy — khác với Tài khoản (tiền thật đang ở đâu) và Tài sản &amp; Nợ (đang sở hữu/nợ bao nhiêu).</p>
+<button class="add-btn" type="button" id="goalAddBtn" style="margin-top:0;">+ Thêm mục tiêu</button>
+<form id="goalForm" style="display:none;margin-top:16px;">
+<div class="form-grid">
+<div class="form-group">
+<label for="goalName">Tên mục tiêu</label>
+<input id="goalName" placeholder="Ví dụ: Mua ô tô">
+</div>
+<div class="form-group">
+<label for="goalTarget">Số tiền mục tiêu (VNĐ)</label>
+<input id="goalTarget" type="number" min="1" step="1000" placeholder="Ví dụ: 500000000">
+</div>
+<div class="form-group">
+<label for="goalDate">Ngày mục tiêu (không bắt buộc)</label>
+<input id="goalDate" type="date">
+</div>
+<div class="form-group full">
+<label for="goalNotes">Ghi chú</label>
+<input id="goalNotes" placeholder="Không bắt buộc">
+</div>
+</div>
+<button class="add-btn" type="submit" id="goalSubmitBtn">+ Thêm</button>
+<button class="add-btn secondary" type="button" id="goalCancelBtn">Hủy</button>
+<div class="message" id="goalMessage"></div>
+</form>
+<div id="goalList" style="margin-top:16px;"><div class="empty">Chưa có mục tiêu nào.</div></div>
 </section>
 </section>
 
@@ -672,6 +720,7 @@ async function loadDashboard(){
     await loadCategories(session.user.id);
     await loadTransactions(session.user.id);
     await loadNetWorth(session.user.id);
+    await loadGoals();
 
     initTransactionFilters();
     initStats();
@@ -3349,12 +3398,402 @@ async function nwDeleteItem(item){
     await loadNetWorth(session.user.id);
 }
 
+/* =========================
+   MỤC TIÊU TÀI CHÍNH (Financial Goals V1)
+   - Planning layer: Goal KHÔNG phải Account/Transaction/Transfer/Asset/Liability.
+   - Net Worth inclusion = 0: contribution không di chuyển tiền thật, không chạm
+     accounts/transactions/net_worth_items, không gọi RPC.
+   - DB đã LOCK: chỉ đọc/ghi goals + goal_contributions. Không RPC, không schema change.
+========================= */
+let goalList=[];
+let goalAggMap={};      /* goal_id -> {saved, count}: từ aggregate GROUP BY, không N+1 */
+let goalExpandedId=null;
+let goalContribs=[];
+let goalEditingId=null;
+
+function goalSavedOf(g){ return Number((goalAggMap[g.id]||{}).saved||0); }
+function goalCountOf(g){ return Number((goalAggMap[g.id]||{}).count||0); }
+
+/* Trạng thái derived — thứ tự ưu tiên: Đã đạt → Quá hạn → Đang thực hiện.
+   "Hôm nay" dùng todayStr() = Asia/Ho_Chi_Minh, không dùng UTC. */
+function goalStatus(g){
+    if(goalSavedOf(g)>=Number(g.target_amount)) return "done";
+    if(g.target_date&&g.target_date<todayStr()) return "overdue";
+    return "active";
+}
+function goalStatusLabel(st){
+    return st==="done"?"🟢 Đã đạt":st==="overdue"?"🔴 Quá hạn":"🔵 Đang thực hiện";
+}
+
+/* Map lỗi DB trigger sang message thân thiện — không hiện raw PostgreSQL error (§7.1 plan).
+   So khớp chuỗi tiếng Việt có dấu đúng migration V3. */
+function mapGoalDbError(err){
+    const m=(err&&err.message)||"";
+    if(m.indexOf("Tổng số tiền đã đóng góp không thể nhỏ hơn 0")>=0)
+        return "Thao tác này sẽ làm tổng đóng góp của mục tiêu âm. Vui lòng kiểm tra lại.";
+    if(m.indexOf("Ngày đóng góp không được là ngày tương lai")>=0)
+        return "Ngày đóng góp không được là ngày tương lai.";
+    if(m.indexOf("Không được chuyển đóng góp sang mục tiêu khác")>=0)
+        return "Không được chuyển đóng góp sang mục tiêu khác.";
+    return "Có lỗi xảy ra, vui lòng thử lại.";
+}
+
+async function loadGoals(){
+    const listEl=document.getElementById("goalList");
+    /* Query 1: goals */
+    const {data:goals,error:e1}=await supabaseClient
+        .from("goals")
+        .select("*")
+        .order("created_at",{ascending:false});
+    if(e1){
+        console.error(e1);
+        if(listEl) listEl.innerHTML='<div class="empty">Không thể tải mục tiêu.</div>';
+        return;
+    }
+    goalList=goals||[];
+    /* Query 2: 1 query cho TẤT CẢ contributions (goal_id + amount), rồi reduce ở client.
+       Đúng 2 query cho toàn màn hình, không N+1 (§7 plan v2.1 — server aggregate bị
+       disable trên project này: PGRST123, nên SUM/COUNT tính ở client). */
+    goalAggMap={};
+    const {data:rows,error:e2}=await supabaseClient
+        .from("goal_contributions")
+        .select("goal_id,amount");
+    if(e2){
+        console.error(e2);
+        if(listEl) listEl.innerHTML='<div class="empty">Không thể tải tiến độ mục tiêu.</div>';
+        return;
+    }
+    (rows||[]).forEach(r=>{
+        const e=goalAggMap[r.goal_id]||(goalAggMap[r.goal_id]={saved:0,count:0});
+        e.saved+=Number(r.amount);
+        e.count+=1;
+    });
+    renderGoals();
+}
+
+function renderGoals(){
+    const listEl=document.getElementById("goalList");
+    if(!listEl) return;
+    if(!goalList.length){
+        listEl.innerHTML='<div class="empty">Chưa có mục tiêu nào.</div>';
+        return;
+    }
+    listEl.innerHTML="";
+    goalList.forEach(g=>{ listEl.appendChild(goalCardEl(g)); });
+}
+
+function goalCardEl(g){
+    const saved=goalSavedOf(g);
+    const target=Number(g.target_amount);
+    const progress=target>0?saved/target*100:0;
+    const barW=Math.min(Math.max(progress,0),100);
+    const st=goalStatus(g);
+    const remaining=target-saved;
+
+    const card=document.createElement("div");
+    card.className="goal-card";
+
+    const head=document.createElement("div");
+    head.className="goal-card-head";
+    const name=document.createElement("div");
+    name.className="goal-card-name";
+    name.textContent=g.name;
+    const badge=document.createElement("span");
+    badge.className="goal-badge "+st;
+    badge.textContent=goalStatusLabel(st);
+    head.appendChild(name); head.appendChild(badge);
+    card.appendChild(head);
+
+    const bar=document.createElement("div");
+    bar.className="goal-progress";
+    const fill=document.createElement("div");
+    fill.className="goal-progress-bar";
+    fill.style.width=barW+"%";
+    bar.appendChild(fill);
+    card.appendChild(bar);
+
+    const line1=document.createElement("div");
+    line1.className="goal-meta";
+    line1.textContent="Đã tích lũy "+formatMoney(saved)+" / "+formatMoney(target)+
+        " · "+progress.toFixed(1).replace(".",",")+"%";
+    card.appendChild(line1);
+
+    const line2=document.createElement("div");
+    line2.className="goal-meta";
+    line2.textContent="Ngày mục tiêu: "+(g.target_date?fmtDmy(g.target_date):"không deadline")+
+        " · "+(remaining>0?"Còn lại "+formatMoney(remaining):
+               remaining<0?"Vượt "+formatMoney(-remaining):"Đã đạt mục tiêu");
+    card.appendChild(line2);
+
+    if(g.notes){
+        const nt=document.createElement("div");
+        nt.className="goal-meta";
+        nt.textContent=g.notes;
+        card.appendChild(nt);
+    }
+
+    const actions=document.createElement("div");
+    actions.className="goal-actions";
+    const mkBtn=(label,fn,red)=>{
+        const b=document.createElement("button");
+        b.type="button"; b.className="add-btn"; b.textContent=label;
+        if(red) b.style.background="#dc3545";
+        b.onclick=fn;
+        return b;
+    };
+    actions.appendChild(mkBtn("+ Đóng góp",()=>goalToggleContribForm(g)));
+    actions.appendChild(mkBtn("Lịch sử",()=>goalToggleHistory(g)));
+    actions.appendChild(mkBtn("✏️ Sửa",()=>goalOpenForm(g)));
+    actions.appendChild(mkBtn("🗑️ Xóa",()=>goalDelete(g),true));
+    card.appendChild(actions);
+
+    /* Form đóng góp (ẩn) — có cảnh báo bắt buộc (§10 Product Requirements) */
+    const cf=document.createElement("div");
+    cf.className="goal-contrib";
+    cf.id="goalContribForm_"+g.id;
+    cf.style.display="none";
+    cf.innerHTML=
+        '<div class="form-grid">'+
+        '<div class="form-group"><label>Số tiền (VNĐ, số âm = rút khỏi kế hoạch)</label>'+
+        '<input type="number" step="1000" placeholder="Ví dụ: 10000000 hoặc -5000000" data-gcf="amount"></div>'+
+        '<div class="form-group"><label>Ngày đóng góp</label>'+
+        '<input type="date" data-gcf="date" value="'+todayStr()+'"></div>'+
+        '<div class="form-group full"><label>Ghi chú</label>'+
+        '<input placeholder="Không bắt buộc" data-gcf="note"></div>'+
+        "</div>"+
+        '<p class="contrib-warn">Đóng góp chỉ cập nhật tiến độ mục tiêu, không di chuyển tiền trong tài khoản.</p>'+
+        '<button class="add-btn" type="button" data-gcf="submit" style="margin-top:0;font-size:13px;padding:6px 12px;">+ Thêm đóng góp</button> '+
+        '<button class="add-btn secondary" type="button" data-gcf="cancel" style="margin-top:0;font-size:13px;padding:6px 12px;">Hủy</button>'+
+        '<div class="message" data-gcf="msg"></div>';
+    cf.querySelector('[data-gcf="submit"]').addEventListener("click",()=>goalSubmitContrib(g,cf));
+    cf.querySelector('[data-gcf="cancel"]').addEventListener("click",()=>{ cf.style.display="none"; });
+    card.appendChild(cf);
+
+    /* Lịch sử contributions (ẩn, chỉ query khi mở) */
+    const hist=document.createElement("div");
+    hist.className="goal-contrib";
+    hist.id="goalHistory_"+g.id;
+    hist.style.display="none";
+    card.appendChild(hist);
+
+    return card;
+}
+
+function goalToggleContribForm(g){
+    const cf=document.getElementById("goalContribForm_"+g.id);
+    if(!cf) return;
+    const willShow=cf.style.display==="none";
+    document.querySelectorAll('[id^="goalContribForm_"]').forEach(el=>{ el.style.display="none"; });
+    if(willShow){
+        cf.style.display="";
+        cf.querySelector('[data-gcf="date"]').value=todayStr();
+        cf.querySelector('[data-gcf="msg"]').textContent="";
+    }
+}
+
+async function goalSubmitContrib(g,cf){
+    const msgEl=cf.querySelector('[data-gcf="msg"]');
+    msgEl.textContent="";
+    const amountRaw=cf.querySelector('[data-gcf="amount"]').value;
+    const dateVal=cf.querySelector('[data-gcf="date"]').value;
+    const note=cf.querySelector('[data-gcf="note"]').value.trim();
+    const amount=Number(amountRaw);
+    if(!amountRaw||isNaN(amount)||amount===0){
+        msgEl.textContent="Số tiền phải khác 0 (dương để cộng, âm để rút)."; return;
+    }
+    if(!dateVal){ msgEl.textContent="Vui lòng chọn ngày đóng góp."; return; }
+    if(dateVal>todayStr()){ msgEl.textContent="Ngày đóng góp không được là ngày tương lai."; return; }
+    /* G8 pre-check ở UI: tổng sau contribution không được âm (DB trigger là backstop) */
+    if(goalSavedOf(g)+amount<0){
+        msgEl.textContent="Tổng đóng góp không được âm. Số tiền rút tối đa: "+formatMoney(goalSavedOf(g))+".";
+        return;
+    }
+    const session=await getSession();
+    if(!session){ msgEl.textContent="Phiên đăng nhập hết hạn."; return; }
+    const {error}=await supabaseClient.from("goal_contributions").insert({
+        user_id:session.user.id,
+        goal_id:g.id,
+        amount:amount,
+        contributed_at:dateVal,
+        notes:note||null
+    });
+    if(error){
+        console.error(error);
+        msgEl.textContent=mapGoalDbError(error);
+        await loadGoals(); /* reload state mới nhất sau DB reject (§7.1) */
+        return;
+    }
+    cf.querySelector('[data-gcf="amount"]').value="";
+    cf.querySelector('[data-gcf="note"]').value="";
+    cf.querySelector('[data-gcf="date"]').value=todayStr();
+    await loadGoals();
+    if(goalExpandedId===g.id) await goalLoadHistory(g);
+}
+
+function goalToggleHistory(g){
+    const hist=document.getElementById("goalHistory_"+g.id);
+    if(!hist) return;
+    if(goalExpandedId===g.id){ hist.style.display="none"; goalExpandedId=null; return; }
+    document.querySelectorAll('[id^="goalHistory_"]').forEach(el=>{ el.style.display="none"; });
+    goalExpandedId=g.id;
+    hist.style.display="";
+    goalLoadHistory(g);
+}
+
+async function goalLoadHistory(g){
+    const hist=document.getElementById("goalHistory_"+g.id);
+    if(!hist) return;
+    hist.innerHTML='<div class="goal-meta">Đang tải...</div>';
+    const {data,error}=await supabaseClient
+        .from("goal_contributions")
+        .select("*")
+        .eq("goal_id",g.id)
+        .order("contributed_at",{ascending:false})
+        .order("created_at",{ascending:false});
+    if(error){
+        console.error(error);
+        hist.innerHTML='<div class="goal-meta">Không thể tải lịch sử.</div>';
+        return;
+    }
+    goalContribs=data||[];
+    hist.innerHTML="";
+    if(!goalContribs.length){
+        hist.innerHTML='<div class="goal-meta">Chưa có đóng góp nào.</div>';
+        return;
+    }
+    goalContribs.forEach(c=>{
+        const row=document.createElement("div");
+        row.className="goal-contrib-row";
+        const left=document.createElement("div");
+        const amt=document.createElement("div");
+        amt.style.fontWeight="700";
+        amt.style.color=Number(c.amount)<0?"#dc2626":"#16a34a";
+        amt.textContent=(Number(c.amount)<0?"−":"+")+formatMoney(Math.abs(Number(c.amount)));
+        const meta=document.createElement("div");
+        meta.className="goal-meta";
+        meta.textContent=fmtDmy(c.contributed_at)+(c.notes?" · "+c.notes:"");
+        left.appendChild(amt); left.appendChild(meta);
+        const del=document.createElement("button");
+        del.type="button"; del.className="add-btn"; del.style.background="#dc3545";
+        del.style.marginTop="0"; del.style.fontSize="12px"; del.style.padding="4px 10px";
+        del.textContent="Xóa";
+        del.onclick=()=>goalDeleteContrib(g,c);
+        row.appendChild(left); row.appendChild(del);
+        hist.appendChild(row);
+    });
+}
+
+async function goalDeleteContrib(g,c){
+    /* G8 pre-check: xóa không được làm tổng âm */
+    if(goalSavedOf(g)-Number(c.amount)<0){
+        alert("Không thể xóa: tổng đóng góp của mục tiêu sẽ bị âm.");
+        return;
+    }
+    if(!confirm("Xóa đóng góp "+formatMoney(Number(c.amount))+" ngày "+fmtDmy(c.contributed_at)+
+        " của mục tiêu \""+g.name+"\"?")) return;
+    const session=await getSession();
+    if(!session) return;
+    const {error}=await supabaseClient
+        .from("goal_contributions").delete()
+        .eq("id",c.id).eq("user_id",session.user.id);
+    if(error){
+        console.error(error);
+        alert(mapGoalDbError(error));
+        await loadGoals();
+        return;
+    }
+    await loadGoals();
+    await goalLoadHistory(g);
+}
+
+async function goalDelete(g){
+    /* §5.5 plan: confirm phải hiển thị số contribution sẽ bị xóa cùng */
+    const n=goalCountOf(g);
+    const msg=n>0
+        ?"Xóa mục tiêu \""+g.name+"\"? Mục tiêu này có "+n+" đóng góp. Xóa mục tiêu sẽ xóa luôn "+n+" đóng góp. Bạn có chắc không?"
+        :"Mục tiêu này chưa có đóng góp. Bạn có chắc muốn xóa \""+g.name+"\"?";
+    if(!confirm(msg)) return;
+    const session=await getSession();
+    if(!session) return;
+    const {error}=await supabaseClient
+        .from("goals").delete()
+        .eq("id",g.id).eq("user_id",session.user.id);
+    if(error){
+        console.error(error);
+        alert(mapGoalDbError(error));
+        return;
+    }
+    if(goalExpandedId===g.id) goalExpandedId=null;
+    await loadGoals();
+}
+
+function goalOpenForm(g){
+    goalEditingId=g?g.id:null;
+    document.getElementById("goalName").value=g?g.name:"";
+    document.getElementById("goalTarget").value=g?g.target_amount:"";
+    document.getElementById("goalDate").value=(g&&g.target_date)?g.target_date:"";
+    document.getElementById("goalNotes").value=(g&&g.notes)?g.notes:"";
+    document.getElementById("goalSubmitBtn").textContent=g?"💾 Lưu thay đổi":"+ Thêm mục tiêu";
+    document.getElementById("goalMessage").textContent="";
+    document.getElementById("goalForm").style.display="block";
+    document.getElementById("goalName").focus();
+}
+
+function goalCloseForm(){
+    document.getElementById("goalForm").style.display="none";
+    goalEditingId=null;
+}
+
+async function goalSubmit(e){
+    e.preventDefault();
+    const msgEl=document.getElementById("goalMessage");
+    msgEl.textContent="";
+    const name=document.getElementById("goalName").value.trim();
+    const targetRaw=document.getElementById("goalTarget").value;
+    const target=Number(targetRaw);
+    const dateVal=document.getElementById("goalDate").value;
+    const notes=document.getElementById("goalNotes").value.trim();
+    if(!name){ msgEl.textContent="Tên mục tiêu không được để trống."; return; }
+    if(!targetRaw||isNaN(target)||target<=0){
+        msgEl.textContent="Số tiền mục tiêu phải lớn hơn 0."; return;
+    }
+    const session=await getSession();
+    if(!session){ msgEl.textContent="Phiên đăng nhập hết hạn."; return; }
+    const payload={
+        user_id:session.user.id,
+        name:name,
+        target_amount:target,
+        target_date:dateVal||null,
+        notes:notes||null
+    };
+    let error=null;
+    if(goalEditingId){
+        const r=await supabaseClient.from("goals").update(payload)
+            .eq("id",goalEditingId).eq("user_id",session.user.id);
+        error=r.error;
+    }else{
+        const r=await supabaseClient.from("goals").insert(payload);
+        error=r.error;
+    }
+    if(error){
+        console.error(error);
+        msgEl.textContent=mapGoalDbError(error);
+        return;
+    }
+    goalCloseForm();
+    await loadGoals();
+}
+
 document.getElementById("nwAddBtn").addEventListener("click",()=>nwOpenForm(null));
 document.getElementById("nwCancelBtn").addEventListener("click",nwCloseForm);
 document.getElementById("nwForm").addEventListener("submit",nwSubmit);
 document.getElementById("nwType").addEventListener("change",nwOnTypeChanged);
 document.getElementById("nwMode").addEventListener("change",nwOnModeChanged);
 document.getElementById("nwAccount").addEventListener("change",nwOnAccountChanged);
+
+document.getElementById("goalAddBtn").addEventListener("click",()=>goalOpenForm(null));
+document.getElementById("goalCancelBtn").addEventListener("click",goalCloseForm);
+document.getElementById("goalForm").addEventListener("submit",goalSubmit);
 
 loadDashboard();
 </script>
