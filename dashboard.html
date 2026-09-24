@@ -319,7 +319,7 @@ section[id]{scroll-margin-top:100px}
 </div>
 <div class="form-group">
 <label for="goalTarget">Số tiền mục tiêu (VNĐ)</label>
-<input id="goalTarget" type="number" min="1" step="1000" placeholder="Ví dụ: 500000000">
+<input id="goalTarget" type="number" placeholder="Ví dụ: 500000000">
 </div>
 <div class="form-group">
 <label for="goalDate">Ngày mục tiêu (không bắt buộc)</label>
@@ -3555,7 +3555,7 @@ function goalCardEl(g){
     cf.innerHTML=
         '<div class="form-grid">'+
         '<div class="form-group"><label>Số tiền (VNĐ, số âm = rút khỏi kế hoạch)</label>'+
-        '<input type="number" step="1000" placeholder="Ví dụ: 10000000 hoặc -5000000" data-gcf="amount"></div>'+
+        '<input type="number" placeholder="Ví dụ: 10000000 hoặc -5000000" data-gcf="amount"></div>'+
         '<div class="form-group"><label>Ngày đóng góp</label>'+
         '<input type="date" data-gcf="date" value="'+todayStr()+'"></div>'+
         '<div class="form-group full"><label>Ghi chú</label>'+
