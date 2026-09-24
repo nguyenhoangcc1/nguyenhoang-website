@@ -436,6 +436,59 @@ section[id]{scroll-margin-top:100px}
 <button class="add-btn" type="button" id="showMoreBtn" style="display:none;"></button>
 </div>
 </section>
+
+<section id="dataExport" class="section">
+<div class="tier-label">DỮ LIỆU</div>
+<h2>💾 Xuất / Sao lưu dữ liệu</h2>
+<p style="color:#64748b;font-size:14px;">Tải dữ liệu của bạn về máy dưới dạng file.
+<b>Xuất (Export)</b> để xem và phân tích — chọn bảng dữ liệu và định dạng.
+<b>Sao lưu (Backup)</b> là ảnh chụp toàn bộ dữ liệu kèm mã kiểm tra toàn vẹn —
+dùng để đối chiếu, <b>không phải để khôi phục tự động</b> (khôi phục sẽ có ở bản sau).</p>
+
+<h3 class="nw-section-title">Xuất dữ liệu</h3>
+<div class="form-grid">
+<div class="form-group">
+<label for="expTable">Bảng dữ liệu</label>
+<select id="expTable">
+<option value="all">Tất cả (6 bảng)</option>
+<option value="accounts">Tài khoản</option>
+<option value="transactions">Giao dịch</option>
+<option value="categories">Danh mục</option>
+<option value="net_worth_items">Tài sản &amp; Nợ</option>
+<option value="goals">Mục tiêu</option>
+<option value="goal_contributions">Đóng góp mục tiêu</option>
+</select>
+</div>
+<div class="form-group">
+<label for="expFormat">Định dạng</label>
+<select id="expFormat">
+<option value="json">JSON</option>
+<option value="csv">CSV (Excel / Sheets)</option>
+</select>
+</div>
+<div class="form-group" id="expDateGroup" style="display:none;">
+<label>Khoảng ngày (chỉ cho Giao dịch)</label>
+<div style="display:flex;gap:8px;">
+<input type="date" id="expFrom" style="flex:1;">
+<input type="date" id="expTo" style="flex:1;">
+</div>
+</div>
+</div>
+<div style="color:#64748b;font-size:13px;margin-top:8px;" id="expHint"></div>
+<div class="message" id="expMessage"></div>
+<button class="add-btn" type="button" id="expBtn">⬇ Tải xuống</button>
+
+<h3 class="nw-section-title">Sao lưu toàn bộ</h3>
+<p style="color:#64748b;font-size:14px;">Một file JSON duy nhất chứa toàn bộ 6 bảng,
+kèm mã SHA-256 để kiểm tra file có bị sửa hay lỗi sau khi tải.</p>
+<div class="message" id="backupMessage"></div>
+<button class="add-btn" type="button" id="backupBtn">💾 Tạo bản sao lưu</button>
+<div id="backupInfo" style="margin-top:12px;font-size:13px;color:#475569;"></div>
+
+<p style="color:#94a3b8;font-size:13px;margin-top:16px;">⚠️ File chứa toàn bộ dữ
+liệu tài chính của bạn — hãy tự bảo quản cẩn thận, không gửi qua kênh không an
+toàn. Website không lưu bản sao lưu của bạn ở bất kỳ đâu.</p>
+</section>
 </div>
 </main>
 
@@ -480,6 +533,23 @@ const currentFilters={
    Net Worth inclusion: INDIRECT ONLY — không chạm logic net worth. */
 let categoriesCache=[];
 
+/* ============ DATA EXPORT / BACKUP V1 ============
+   Cờ "đã load" cho từng dataset — phục vụ quy tắc cứng (plan v1.1 §4.2):
+   export/backup CHỈ dùng dữ liệu đã có trong application state,
+   KHÔNG tạo query mới, KHÔNG auto-fetch thêm. Mỗi cờ được bật bằng
+   đúng 1 dòng ở cuối hàm load hiện có — không đổi logic các hàm đó. */
+const dataLoadedFlags={accounts:false,transactions:false,categories:false,net_worth_items:false,goals:false,goal_contributions:false};
+
+/* Full rows của goal_contributions. Query aggregate của Goals V1 chỉ lấy
+   (goal_id,amount) nên không đủ fidelity cho backup (plan v1.1 Q1) —
+   xem chỗ widen select trong loadGoals. */
+let goalContribRows=[];
+
+/* Commit SHA ngắn của bản app — nhúng tay tại thời điểm release
+   (plan v1.1 §4.3). Quy trình: commit implement xong → điền SHA của
+   chính commit đó vào commit "chore" tiếp theo. */
+const APP_VERSION="ba6cd17";
+
 /* Default categories đã duyệt — toàn bộ root, lazy-seed ở frontend */
 const DEFAULT_CATEGORIES=[
     {name:"Ăn uống",type:"expense"},
@@ -523,7 +593,7 @@ async function ensureDefaultCategories(userId){
 async function loadCategories(userId){
     const {data,error}=await supabaseClient
         .from("categories")
-        .select("id,name,type,parent_id")
+        .select("*")
         .eq("user_id",userId)
         .order("type",{ascending:true})
         .order("name",{ascending:true});
@@ -532,6 +602,7 @@ async function loadCategories(userId){
         categoriesCache=[];
     }else{
         categoriesCache=data||[];
+        dataLoadedFlags.categories=true; /* DATA EXPORT V1: cờ đã load (không đổi logic) */
     }
     refreshCategoryFormOptions();
     refreshFilterCategoryOptions();
@@ -696,6 +767,281 @@ async function getSession(){
     return session;
 }
 
+/* ================= DATA EXPORT / BACKUP V1 =================
+   Plan: DATA_EXPORT_BACKUP_PLAN_v1.1.md (🟢 APPROVED TO IMPLEMENT)
+   - READ-ONLY tuyệt đối: chỉ đọc application state đã load (dataLoadedFlags),
+     KHÔNG tạo query/RPC mới, KHÔNG auto-fetch, KHÔNG ghi DB.
+   - Không CDN/dependency: SHA-256 qua crypto.subtle của browser.
+   - Transfer giữ nguyên row/type; categories giữ parent_id;
+     goals giữ goal_id link — không suy diễn lại dữ liệu. */
+
+const EXPORT_TABLES=[
+    {key:"accounts",label:"Tài khoản",get:()=>accountsCache},
+    {key:"transactions",label:"Giao dịch",get:()=>allTransactions},
+    {key:"categories",label:"Danh mục",get:()=>categoriesCache},
+    {key:"net_worth_items",label:"Tài sản & Nợ",get:()=>nwItems},
+    {key:"goals",label:"Mục tiêu",get:()=>goalList},
+    {key:"goal_contributions",label:"Đóng góp mục tiêu",get:()=>goalContribRows},
+];
+
+/* Header CSV dự phòng cho bảng rỗng (best-effort — bảng có dữ liệu thì lấy
+   union keys từ rows). Không phải schema DB, chỉ để file rỗng vẫn có header. */
+const EXPORT_FALLBACK_COLUMNS={
+    accounts:["id","user_id","name","type","balance","created_at"],
+    transactions:["id","user_id","account_id","destination_account_id","type","amount","transaction_date","category_id","description","created_at"],
+    categories:["id","user_id","name","type","parent_id","created_at"],
+    net_worth_items:["id","user_id","name","type","category","account_id","value","currency","notes","created_at","updated_at"],
+    goals:["id","user_id","name","target_amount","target_date","notes","created_at"],
+    goal_contributions:["id","user_id","goal_id","amount","contributed_at","notes","created_at"],
+};
+
+/* Đệ quy sắp xếp keys theo thứ tự byte UTF-8 (plan v1.1 §4.3).
+   Array giữ nguyên thứ tự phần tử. */
+function canonicalize(v){
+    if(Array.isArray(v)) return v.map(canonicalize);
+    if(v!==null&&typeof v==="object"){
+        const out={};
+        Object.keys(v).sort().forEach(k=>{ out[k]=canonicalize(v[k]); });
+        return out;
+    }
+    return v;
+}
+
+async function sha256Hex(str){
+    const bytes=new TextEncoder().encode(str);
+    const digest=await crypto.subtle.digest("SHA-256",bytes);
+    return Array.from(new Uint8Array(digest))
+        .map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
+/* Timestamp +07 cho tên file: YYYYMMDD-HHmm (không dùng toISOString) */
+function fileStampPlus7(){
+    const p=plus7Date();
+    const d2=n=>String(n).padStart(2,"0");
+    return p.getUTCFullYear()+d2(p.getUTCMonth()+1)+d2(p.getUTCDate())+
+        "-"+d2(p.getUTCHours())+d2(p.getUTCMinutes());
+}
+
+/* ISO +07 cho meta.exported_at: YYYY-MM-DDTHH:mm:ss+07:00 */
+function plus7ISOString(){
+    const p=plus7Date();
+    const d2=n=>String(n).padStart(2,"0");
+    return p.getUTCFullYear()+"-"+d2(p.getUTCMonth()+1)+"-"+d2(p.getUTCDate())+
+        "T"+d2(p.getUTCHours())+":"+d2(p.getUTCMinutes())+":"+d2(p.getUTCSeconds())+"+07:00";
+}
+
+function csvEscape(v){
+    if(v===null||v===undefined) return "";
+    const s=String(v);
+    return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;
+}
+
+/* Header = union keys theo thứ tự xuất hiện; bảng rỗng → fallback. */
+function csvColumns(tableKey,rows){
+    const cols=[];
+    rows.forEach(r=>{
+        Object.keys(r).forEach(k=>{ if(cols.indexOf(k)<0) cols.push(k); });
+    });
+    if(!cols.length) return EXPORT_FALLBACK_COLUMNS[tableKey]||[];
+    return cols;
+}
+
+function rowsToCSV(tableKey,rows){
+    const cols=csvColumns(tableKey,rows);
+    const lines=[cols.map(csvEscape).join(",")];
+    rows.forEach(r=>{
+        lines.push(cols.map(c=>csvEscape(r[c])).join(","));
+    });
+    return "﻿"+lines.join("\r\n");
+}
+
+function downloadFile(filename,content,mime){
+    const blob=new Blob([content],{type:mime});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download=filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },1500);
+}
+
+/* Kiểm tra dataset đã load đủ cho phạm vi cần export (quy tắc cứng v1.1 §4.2).
+   Trả về null nếu OK, ngược lại trả về message yêu cầu tải lại Dashboard. */
+function exportReadiness(keys){
+    const missing=keys.filter(k=>!dataLoadedFlags[k]);
+    if(!missing.length) return null;
+    return "Dữ liệu chưa được tải đầy đủ ("+missing.join(", ")+
+        "). Vui lòng tải lại Dashboard để nạp đầy đủ dữ liệu trước khi xuất.";
+}
+
+function setExpMessage(msg,ok){
+    const el=document.getElementById("expMessage");
+    el.textContent=msg||"";
+    el.style.color=ok?"#15803d":"#dc2626";
+}
+function setBackupMessage(msg,ok){
+    const el=document.getElementById("backupMessage");
+    el.textContent=msg||"";
+    el.style.color=ok?"#15803d":"#dc2626";
+}
+
+function tableDef(key){
+    return EXPORT_TABLES.find(t=>t.key===key);
+}
+
+/* Payload backup canonical — đúng §4.3 plan v1.1:
+   data = canonicalize(raw) → hash trên JSON.stringify(canonical) compact. */
+async function buildBackupPayload(){
+    const data={};
+    const rowCounts={};
+    EXPORT_TABLES.forEach(t=>{
+        const rows=t.get();
+        data[t.key]=canonicalize(rows);
+        rowCounts[t.key]=rows.length;
+    });
+    const canonicalStr=JSON.stringify(canonicalize(data));
+    const hash=await sha256Hex(canonicalStr);
+    return {
+        meta:{
+            app:"nguyenhoang-website",
+            app_version:APP_VERSION,
+            exported_at:plus7ISOString(),
+            type:"full-backup",
+            row_counts:rowCounts,
+            sha256:hash
+        },
+        data:data
+    };
+}
+
+async function doBackup(){
+    setBackupMessage("",true);
+    document.getElementById("backupInfo").innerHTML="";
+    const notReady=exportReadiness(EXPORT_TABLES.map(t=>t.key));
+    if(notReady){ setBackupMessage(notReady,false); return; }
+    try{
+        setBackupMessage("Đang tạo bản sao lưu…",true);
+        const payload=await buildBackupPayload();
+        const fname="sao-luu-"+fileStampPlus7()+".json";
+        /* File ghi pretty-print để dễ đọc; hash đã tính trên bản compact
+           của data nên không ảnh hưởng tính deterministic. */
+        downloadFile(fname,JSON.stringify(payload,null,2),"application/json");
+        const c=payload.meta.row_counts;
+        const total=Object.keys(c).reduce((s,k)=>s+c[k],0);
+        document.getElementById("backupInfo").innerHTML=
+            "Đã tải <b>"+fname+"</b> — "+total+" dòng dữ liệu ("+
+            EXPORT_TABLES.map(t=>t.label+": "+c[t.key]).join(", ")+
+            ").<br>SHA-256: <code style=\"word-break:break-all;\">"+
+            payload.meta.sha256+"</code>";
+        setBackupMessage("Tạo bản sao lưu thành công.",true);
+    }catch(err){
+        console.error(err);
+        setBackupMessage("Tạo bản sao lưu thất bại: "+(err&&err.message||err),false);
+    }
+}
+
+/* Export 1 bảng (hoặc tất cả) — JSON hoặc CSV. Transactions có thể lọc ngày. */
+async function doExport(){
+    setExpMessage("",true);
+    const tableKey=document.getElementById("expTable").value;
+    const format=document.getElementById("expFormat").value;
+    const keys=tableKey==="all"?EXPORT_TABLES.map(t=>t.key):[tableKey];
+    const notReady=exportReadiness(keys);
+    if(notReady){ setExpMessage(notReady,false); return; }
+
+    let from="",to="";
+    if(tableKey==="transactions"||tableKey==="all"){
+        from=document.getElementById("expFrom").value;
+        to=document.getElementById("expTo").value;
+        if((from&&!to)||(!from&&to)){
+            setExpMessage("Vui lòng chọn đủ Từ ngày và Đến ngày, hoặc bỏ trống cả hai.",false);
+            return;
+        }
+        if(from&&to&&from>to){
+            setExpMessage("Từ ngày không được sau Đến ngày.",false);
+            return;
+        }
+    }
+
+    try{
+        const stamp=fileStampPlus7();
+        if(format==="json"){
+            if(tableKey==="all"){
+                /* All → JSON: 1 file chứa 6 bảng (giống cấu trúc backup). */
+                const payload=await buildBackupPayload();
+                payload.meta.type="full-export";
+                downloadFile("xuat-tat-ca-"+stamp+".json",
+                    JSON.stringify(payload,null,2),"application/json");
+            }else{
+                const t=tableDef(tableKey);
+                let rows=t.get();
+                if(tableKey==="transactions"&&from&&to) rows=filterByRange(rows,from,to);
+                const payload={
+                    meta:{
+                        app:"nguyenhoang-website",
+                        app_version:APP_VERSION,
+                        exported_at:plus7ISOString(),
+                        type:"table-export",
+                        table:tableKey,
+                        date_from:from||null,
+                        date_to:to||null,
+                        row_count:rows.length
+                    },
+                    data:canonicalize(rows)
+                };
+                downloadFile("xuat-"+tableKey+"-"+stamp+".json",
+                    JSON.stringify(payload,null,2),"application/json");
+            }
+            const n=tableKey==="all"
+                ?EXPORT_TABLES.reduce((s,t)=>s+t.get().length,0)
+                :tableDef(tableKey).get().length;
+            setExpMessage("Đã xuất "+n+" dòng ("+format.toUpperCase()+").",true);
+        }else{
+            /* All → CSV: 6 file riêng, không ZIP (plan v1.1 Q2). */
+            const targets=tableKey==="all"?EXPORT_TABLES:[tableDef(tableKey)];
+            targets.forEach(t=>{
+                let rows=t.get();
+                if(t.key==="transactions"&&from&&to) rows=filterByRange(rows,from,to);
+                downloadFile("xuat-"+t.key+"-"+stamp+".csv",
+                    rowsToCSV(t.key,rows),"text/csv;charset=utf-8");
+            });
+            if(targets.length>1){
+                setExpMessage("Đã xuất 6 file CSV riêng (mỗi bảng một file). "+
+                    "Nếu trình duyệt chặn tải nhiều file, hãy cho phép rồi bấm lại.",true);
+            }else{
+                setExpMessage("Đã xuất "+targets[0].get().length+" dòng (CSV).",true);
+            }
+        }
+    }catch(err){
+        console.error(err);
+        setExpMessage("Xuất dữ liệu thất bại: "+(err&&err.message||err),false);
+    }
+}
+
+/* Khởi tạo UI section — gọi 1 lần từ loadDashboard (additive). */
+function initDataExport(){
+    const tableSel=document.getElementById("expTable");
+    const dateGroup=document.getElementById("expDateGroup");
+    const hint=document.getElementById("expHint");
+    const syncDateUI=()=>{
+        const show=tableSel.value==="transactions"||tableSel.value==="all";
+        dateGroup.style.display=show?"block":"none";
+        hint.textContent=show?
+            "Mẹo: khoảng ngày chỉ áp dụng cho bảng Giao dịch. Bỏ trống = xuất toàn bộ.":
+            "";
+        if(show){
+            /* Mặc định theo kỳ đang xem trên Dashboard (tái dùng, không query mới). */
+            const r=resolveDateRange();
+            document.getElementById("expFrom").value=r[0]||"";
+            document.getElementById("expTo").value=r[1]||"";
+        }
+    };
+    tableSel.addEventListener("change",syncDateUI);
+    syncDateUI();
+    document.getElementById("expBtn").addEventListener("click",doExport);
+    document.getElementById("backupBtn").addEventListener("click",doBackup);
+}
+
 async function loadDashboard(){
     const session=await getSession();
 
@@ -728,6 +1074,7 @@ async function loadDashboard(){
 
     initTransactionFilters();
     initStats();
+    initDataExport(); /* DATA EXPORT / BACKUP V1 — additive, không đổi luồng cũ */
     /* Kỳ mặc định của Dashboard: tháng hiện tại (+07) — single date-range state */
     setStatsPeriod("month",statsDefaultMonth());
 }
@@ -753,6 +1100,7 @@ async function loadAccounts(userId){
     }
 
     accountsCache=data||[];
+    dataLoadedFlags.accounts=true; /* DATA EXPORT V1: cờ đã load (không đổi logic) */
     refreshNetWorthView();
 
     accountNameById={};
@@ -1593,6 +1941,7 @@ async function loadTransactions(userId){
     }
 
     allTransactions=all;
+    dataLoadedFlags.transactions=true; /* DATA EXPORT V1: cờ đã load (không đổi logic) */
     displayedCount=FILTER_PAGE_SIZE;
     applyFiltersAndRender();
     /* Đếm số giao dịch/danh mục trong manager cần allTransactions */
@@ -3304,6 +3653,7 @@ async function loadNetWorth(userId){
         return;
     }
     nwItems=data||[];
+    dataLoadedFlags.net_worth_items=true; /* DATA EXPORT V1: cờ đã load (không đổi logic) */
     renderNetWorth();
 }
 
@@ -3680,18 +4030,22 @@ async function loadGoals(){
         return;
     }
     goalList=goals||[];
-    /* Query 2: 1 query cho TẤT CẢ contributions (goal_id + amount), rồi reduce ở client.
-       Đúng 2 query cho toàn màn hình, không N+1 (§7 plan v2.1 — server aggregate bị
-       disable trên project này: PGRST123, nên SUM/COUNT tính ở client). */
+    /* Query 2: 1 query cho TẤT CẢ contributions. Giữ đúng 2 query cho toàn màn
+       hình, không N+1. DATA EXPORT V1: widen select("*") thay vì
+       (goal_id,amount) để backup đủ full row fidelity (plan v1.1 Q1) —
+       số query, filter, thứ tự rows và logic aggregate bên dưới KHÔNG đổi. */
     goalAggMap={};
     const {data:rows,error:e2}=await supabaseClient
         .from("goal_contributions")
-        .select("goal_id,amount");
+        .select("*");
     if(e2){
         console.error(e2);
         if(listEl) listEl.innerHTML='<div class="empty">Không thể tải tiến độ mục tiêu.</div>';
         return;
     }
+    goalContribRows=rows||[]; /* DATA EXPORT V1: full rows cho backup */
+    dataLoadedFlags.goals=true; /* DATA EXPORT V1: cờ đã load (không đổi logic) */
+    dataLoadedFlags.goal_contributions=true; /* DATA EXPORT V1: cờ đã load */
     (rows||[]).forEach(r=>{
         const e=goalAggMap[r.goal_id]||(goalAggMap[r.goal_id]={saved:0,count:0});
         e.saved+=Number(r.amount);
