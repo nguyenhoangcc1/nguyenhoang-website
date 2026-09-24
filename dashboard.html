@@ -9,7 +9,7 @@
 *{box-sizing:border-box}
 body{margin:0;font-family:Arial,Helvetica,sans-serif;background:#f5f7fb;color:#172033}
 a{text-decoration:none;color:inherit}
-.header{background:#fff;border-bottom:1px solid #e5e7eb;position:sticky;top:0;z-index:10}
+.header{background:#fff;border-bottom:1px solid #e5e7eb}
 .nav{width:90%;max-width:1100px;margin:auto;height:70px;display:flex;align-items:center;justify-content:space-between}
 .logo{font-size:23px;font-weight:700}.logo span{color:#2864e8}
 .nav-right{display:flex;align-items:center;gap:20px}.back-link{color:#475569;font-size:14px}
@@ -28,6 +28,17 @@ input,select{padding:12px;border:1px solid #d1d5db;border-radius:8px;font-size:1
 input:focus,select:focus{outline:none;border-color:#2864e8}
 .add-btn{margin-top:18px;padding:12px 22px;border:none;border-radius:8px;background:#2864e8;color:#fff;font-weight:600;cursor:pointer}
 .add-btn:hover{opacity:.9}.message{margin-top:15px;font-size:14px}
+html{scroll-behavior:smooth}
+section[id]{scroll-margin-top:100px}
+.tier-label{font-size:11px;letter-spacing:2px;color:#94a3b8;font-weight:700;margin-bottom:8px}
+.dash-nav{display:flex;gap:2px;align-items:center;overflow-x:auto;scrollbar-width:none}
+.dash-nav::-webkit-scrollbar{display:none}
+.dash-nav a{padding:8px 12px;border-radius:8px;color:#334155;text-decoration:none;font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0}
+.dash-nav a:hover{background:#eef2ff}
+.concept-hint{font-size:13px;color:#64748b;margin:-8px 0 14px}
+.add-btn.secondary{background:#64748b;margin-left:8px}
+.subsection{margin-top:20px;padding-top:20px;border-top:1px solid #f1f5f9}
+.subsection:first-of-type{margin-top:8px;padding-top:0;border-top:none}
 .account-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px}
 .account-card{border:1px solid #e5e7eb;border-radius:12px;padding:16px;background:#fafbff}
 .account-name{font-weight:700;margin-bottom:6px}.account-meta{font-size:13px;color:#64748b}.account-balance{font-size:20px;font-weight:700;margin-top:10px}
@@ -36,7 +47,7 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 .transaction-amount{font-weight:700}.empty{color:#64748b;padding:15px 0}.loading{text-align:center;padding:60px 20px;color:#64748b}
 .filter-bar{background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:18px}
 .filter-badge{display:inline-block;font-size:13px;font-weight:600;color:#0f766e;background:#ccfbf1;border-radius:20px;padding:4px 12px;margin-left:10px;vertical-align:middle}
-@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}.account-grid{grid-template-columns:1fr 1fr}.nav-right{gap:10px}}
+@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}.account-grid{grid-template-columns:1fr 1fr}.nav-right{gap:10px}.nav{flex-wrap:wrap;height:auto;min-height:70px;padding:8px 0}.dash-nav{order:3;flex-basis:100%;margin-top:4px}}
 @media(max-width:550px){.cards{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}.form-group.full{grid-column:auto}.account-grid{grid-template-columns:1fr}.back-link{display:none}.welcome h1{font-size:25px}}
 <style>
 .nw-item{display:flex;align-items:center;justify-content:space-between;padding:14px;border:1px solid #e5e7eb;border-radius:10px;margin-bottom:10px;background:#fff}
@@ -79,6 +90,13 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <header class="header">
 <div class="nav">
 <div class="logo">Nguyên <span>HOÀNG</span></div>
+<nav class="dash-nav">
+<a href="#overview">Tổng quan</a>
+<a href="#transactions">Giao dịch</a>
+<a href="#accounts">Tài khoản</a>
+<a href="#networth">Tài sản &amp; Nợ</a>
+<a href="#categories">Danh mục</a>
+</nav>
 <div class="nav-right">
 <a class="back-link" href="index.html">← Về website</a>
 <button class="logout-btn" id="logoutBtn">Đăng xuất</button>
@@ -89,6 +107,8 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <main class="container">
 <div id="loading" class="loading">Đang kiểm tra tài khoản...</div>
 <div id="dashboard" style="display:none;">
+<section id="overview">
+<div class="tier-label">TỔNG QUAN</div>
 <div class="welcome">
 <h1>Xin chào, <span id="userName">bạn</span> 👋</h1>
 <p>Đây là khu vực tài chính cá nhân của bạn.</p>
@@ -131,93 +151,12 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <h3 class="nw-section-title" style="margin-top:18px;">Theo danh mục</h3>
 <div id="categoryStats"><div class="empty">Chưa có dữ liệu.</div></div>
 </div>
-<div class="section">
-<h2>🏦 Tài khoản của tôi</h2>
-<p style="color:#64748b;margin-top:-8px">Ví dụ: Tiền mặt, Vietcombank, BIDV, thẻ tín dụng...</p>
-  <button class="add-btn" type="button" onclick="document.getElementById('accountForm').style.display='block';">+ Thêm tài khoản</button>
-<form id="accountForm" style="display:none;">
-<div class="form-grid">
-<div class="form-group">
-<label for="accountName">Tên tài khoản</label>
-<input id="accountName" placeholder="Ví dụ: Tiền mặt" required>
-</div>
-<div class="form-group">
-<label for="accountType">Loại tài khoản</label>
-<select id="accountType">
-<option value="cash">Tiền mặt</option>
-<option value="bank">Ngân hàng</option>
-<option value="credit">Thẻ tín dụng</option>
-<option value="investment">Đầu tư</option>
-<option value="other">Khác</option>
-</select>
-</div>
-<div class="form-group">
-<label for="accountBalance">Số dư hiện tại (VNĐ)</label>
-<input id="accountBalance" type="number" min="0" value="0" placeholder="Ví dụ: 5000000">
-</div>
-</div>
-<button class="add-btn" type="submit">+ Thêm tài khoản</button>
-<div class="message" id="accountMessage"></div>
-</form>
-<div id="accountList" class="account-grid">
-<div class="empty">Chưa có tài khoản nào.</div>
-</div>
-</div>
-
-<div class="section">
-<h2>📋 Danh mục tài sản &amp; nợ</h2>
-<button class="add-btn" type="button" id="nwAddBtn" style="margin-top:0;">+ Thêm tài sản / khoản nợ</button>
-<form id="nwForm" style="display:none;margin-top:16px;">
-<div class="form-grid">
-<div class="form-group">
-<label for="nwType">Loại</label>
-<select id="nwType">
-<option value="asset">Tài sản</option>
-<option value="liability">Khoản nợ</option>
-</select>
-</div>
-<div class="form-group">
-<label for="nwName">Tên</label>
-<input id="nwName" placeholder="Ví dụ: Tiền gửi Vietcombank">
-</div>
-<div class="form-group">
-<label for="nwMode">Phương thức</label>
-<select id="nwMode">
-<option value="linked">Liên kết tài khoản</option>
-<option value="manual">Nhập giá trị thủ công</option>
-</select>
-</div>
-<div class="form-group" id="nwAccountGroup">
-<label for="nwAccount">Tài khoản liên kết</label>
-<select id="nwAccount"></select>
-</div>
-<div class="form-group" id="nwValueGroup" style="display:none;">
-<label for="nwValue">Giá trị (VNĐ)</label>
-<input id="nwValue" type="number" min="0" step="1000" placeholder="Ví dụ: 500000000">
-</div>
-<div class="form-group">
-<label for="nwCategory">Danh mục</label>
-<select id="nwCategory"></select>
-</div>
-<div class="form-group full">
-<label for="nwNotes">Ghi chú</label>
-<input id="nwNotes" placeholder="Không bắt buộc">
-</div>
-</div>
-<div class="nw-warn" id="nwWarn"></div>
-<button class="add-btn" type="submit" id="nwSubmitBtn">+ Thêm</button>
-<button class="add-btn" type="button" id="nwCancelBtn" style="background:#64748b;margin-left:8px;">Hủy</button>
-<div class="message" id="nwMessage"></div>
-</form>
-<h3 class="nw-section-title">Tài sản</h3>
-<div id="nwAssetList"><div class="empty">Chưa có tài sản nào.</div></div>
-<h3 class="nw-section-title">Khoản nợ</h3>
-<div id="nwLiabilityList"><div class="empty">Chưa có khoản nợ nào.</div></div>
-</div>
-
-<div class="section">
-<h2>Thêm giao dịch</h2>
-<form id="transactionForm">
+</section>
+<section id="action" class="section">
+<div class="tier-label">THAO TÁC</div>
+<h2>⚡ Giao dịch</h2>
+<button class="add-btn" type="button" onclick="document.getElementById('transactionForm').style.display='block';">+ Thêm giao dịch</button>
+<form id="transactionForm" style="display:none;">
 <div class="form-grid">
 <div class="form-group">
 <label for="transactionType">Loại giao dịch</label>
@@ -261,11 +200,101 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <button class="add-btn" type="submit" id="transactionSubmitBtn">+ Thêm giao dịch</button>
 <div class="message" id="formMessage"></div>
 </form>
+</section>
+<section id="manage" class="section">
+<div class="tier-label">QUẢN LÝ TÀI CHÍNH</div>
+<section id="accounts" class="subsection">
+<h2>🏦 Tài khoản của tôi</h2>
+<p class="concept-hint">Tài khoản cho biết tiền của bạn đang nằm ở đâu — theo dõi dòng tiền ra vào.</p>
+<p style="color:#64748b;margin-top:-8px">Ví dụ: Tiền mặt, Vietcombank, BIDV, thẻ tín dụng...</p>
+  <button class="add-btn" type="button" onclick="document.getElementById('accountForm').style.display='block';">+ Thêm tài khoản</button>
+<form id="accountForm" style="display:none;">
+<div class="form-grid">
+<div class="form-group">
+<label for="accountName">Tên tài khoản</label>
+<input id="accountName" placeholder="Ví dụ: Tiền mặt" required>
 </div>
+<div class="form-group">
+<label for="accountType">Loại tài khoản</label>
+<select id="accountType">
+<option value="cash">Tiền mặt</option>
+<option value="bank">Ngân hàng</option>
+<option value="credit">Thẻ tín dụng</option>
+<option value="investment">Đầu tư</option>
+<option value="other">Khác</option>
+</select>
+</div>
+<div class="form-group">
+<label for="accountBalance">Số dư hiện tại (VNĐ)</label>
+<input id="accountBalance" type="number" min="0" value="0" placeholder="Ví dụ: 5000000">
+</div>
+</div>
+<button class="add-btn" type="submit">+ Thêm tài khoản</button>
+<div class="message" id="accountMessage"></div>
+</form>
+<div id="accountList" class="account-grid">
+<div class="empty">Chưa có tài khoản nào.</div>
+</div>
+</section>
 
-<div class="section">
+<section id="networth" class="subsection">
+<h2>📋 Danh mục tài sản &amp; nợ</h2>
+<p class="concept-hint">Tài sản &amp; Nợ cho biết bạn thực sự sở hữu bao nhiêu và đang nợ bao nhiêu — tài sản ròng.</p>
+<button class="add-btn" type="button" id="nwAddBtn">+ Thêm tài sản / khoản nợ</button>
+<form id="nwForm" style="display:none;margin-top:16px;">
+<div class="form-grid">
+<div class="form-group">
+<label for="nwType">Loại</label>
+<select id="nwType">
+<option value="asset">Tài sản</option>
+<option value="liability">Khoản nợ</option>
+</select>
+</div>
+<div class="form-group">
+<label for="nwName">Tên</label>
+<input id="nwName" placeholder="Ví dụ: Tiền gửi Vietcombank">
+</div>
+<div class="form-group">
+<label for="nwMode">Phương thức</label>
+<select id="nwMode">
+<option value="linked">Liên kết tài khoản</option>
+<option value="manual">Nhập giá trị thủ công</option>
+</select>
+</div>
+<div class="form-group" id="nwAccountGroup">
+<label for="nwAccount">Tài khoản liên kết</label>
+<select id="nwAccount"></select>
+</div>
+<div class="form-group" id="nwValueGroup" style="display:none;">
+<label for="nwValue">Giá trị (VNĐ)</label>
+<input id="nwValue" type="number" min="0" step="1000" placeholder="Ví dụ: 500000000">
+</div>
+<div class="form-group">
+<label for="nwCategory">Danh mục</label>
+<select id="nwCategory"></select>
+</div>
+<div class="form-group full">
+<label for="nwNotes">Ghi chú</label>
+<input id="nwNotes" placeholder="Không bắt buộc">
+</div>
+</div>
+<div class="nw-warn" id="nwWarn"></div>
+<button class="add-btn" type="submit" id="nwSubmitBtn">+ Thêm</button>
+<button class="add-btn secondary" type="button" id="nwCancelBtn">Hủy</button>
+<div class="message" id="nwMessage"></div>
+</form>
+<h3 class="nw-section-title">Tài sản</h3>
+<div id="nwAssetList"><div class="empty">Chưa có tài sản nào.</div></div>
+<h3 class="nw-section-title">Khoản nợ</h3>
+<div id="nwLiabilityList"><div class="empty">Chưa có khoản nợ nào.</div></div>
+</section>
+</section>
+
+
+<section id="categories" class="section">
+<div class="tier-label">DỮ LIỆU</div>
 <h2>🗂️ Danh mục thu / chi</h2>
-<button class="add-btn" type="button" id="catAddBtn" style="margin-top:0;">+ Thêm danh mục</button>
+<button class="add-btn" type="button" id="catAddBtn">+ Thêm danh mục</button>
 <form id="catForm" style="display:none;margin-top:16px;">
 <div class="form-grid">
 <div class="form-group">
@@ -288,16 +317,17 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 </div>
 <div class="message" id="catMessage"></div>
 <button class="add-btn" type="submit" id="catSubmitBtn">+ Thêm danh mục</button>
-<button class="add-btn" type="button" id="catCancelBtn" style="background:#64748b;margin-left:8px;">Hủy</button>
+<button class="add-btn secondary" type="button" id="catCancelBtn">Hủy</button>
 <div class="message" id="catFormNote" style="color:#64748b;">Danh mục cha chỉ được 1 cấp: danh mục con không thể có con.</div>
 </form>
 <h3 class="nw-section-title">Chi tiêu</h3>
 <div id="catExpenseList"><div class="empty">Chưa có danh mục nào.</div></div>
 <h3 class="nw-section-title">Thu nhập</h3>
 <div id="catIncomeList"><div class="empty">Chưa có danh mục nào.</div></div>
-</div>
+</section>
 
-<div class="section">
+<section id="transactions" class="section">
+<div class="tier-label">DỮ LIỆU</div>
 <h2>Giao dịch <span id="filterBadge" class="filter-badge" style="display:none;">🔍 Đang lọc</span></h2>
 <div class="filter-bar">
 <div class="form-grid">
@@ -353,7 +383,7 @@ input:focus,select:focus{outline:none;border-color:#2864e8}
 <div style="text-align:center;margin-top:14px;">
 <button class="add-btn" type="button" id="showMoreBtn" style="display:none;"></button>
 </div>
-</div>
+</section>
 </div>
 </main>
 
