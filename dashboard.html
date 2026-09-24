@@ -3711,7 +3711,7 @@ async function goalDelete(g){
     const n=goalCountOf(g);
     const msg=n>0
         ?"Xóa mục tiêu \""+g.name+"\"? Mục tiêu này có "+n+" đóng góp. Xóa mục tiêu sẽ xóa luôn "+n+" đóng góp. Bạn có chắc không?"
-        :"Mục tiêu này chưa có đóng góp. Bạn có chắc muốn xóa \""+g.name+"\"?";
+        :"Mục tiêu này chưa có đóng góp. Bạn có chắc muốn xóa?";
     if(!confirm(msg)) return;
     const session=await getSession();
     if(!session) return;
