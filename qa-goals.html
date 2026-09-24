@@ -319,7 +319,7 @@ section[id]{scroll-margin-top:100px}
 </div>
 <div class="form-group">
 <label for="goalTarget">Số tiền mục tiêu (VNĐ)</label>
-<input id="goalTarget" type="number" min="1" step="1000" placeholder="Ví dụ: 500000000">
+<input id="goalTarget" type="number" placeholder="Ví dụ: 500000000">
 </div>
 <div class="form-group">
 <label for="goalDate">Ngày mục tiêu (không bắt buộc)</label>
@@ -3555,7 +3555,7 @@ function goalCardEl(g){
     cf.innerHTML=
         '<div class="form-grid">'+
         '<div class="form-group"><label>Số tiền (VNĐ, số âm = rút khỏi kế hoạch)</label>'+
-        '<input type="number" step="1000" placeholder="Ví dụ: 10000000 hoặc -5000000" data-gcf="amount"></div>'+
+        '<input type="number" placeholder="Ví dụ: 10000000 hoặc -5000000" data-gcf="amount"></div>'+
         '<div class="form-group"><label>Ngày đóng góp</label>'+
         '<input type="date" data-gcf="date" value="'+todayStr()+'"></div>'+
         '<div class="form-group full"><label>Ghi chú</label>'+
@@ -3800,9 +3800,8 @@ loadDashboard();
 
 <!-- QA SHIM (temp file only, never in dashboard.html) -->
 <div id="qaPanel" style="position:fixed;top:0;left:0;right:0;background:#1e293b;color:#fff;padding:8px 12px;z-index:9999;font-size:13px;">
-<b>QA-GOALS</b>
+<b>QA-GOALS-2</b>
 <button id="qaSnap" type="button">Snapshot baseline</button>
-<button id="qaDbReject" type="button">DB reject test (bypass UI)</button>
 <button id="qaCleanup" type="button">Cleanup all goals</button>
 <button id="qaConfirmT" type="button">confirm=<span id="qaConfirmState">true</span></button>
 <pre id="qaOut" style="max-height:180px;overflow:auto;background:#0f172a;padding:8px;margin:8px 0 0;white-space:pre-wrap;">QA ready.</pre>
@@ -3811,8 +3810,8 @@ loadDashboard();
 <script>
 window.__qaConfirm=true;
 window.__qaLastConfirm=null;
-window.confirm=function(m){ window.__qaLastConfirm=m; return window.__qaConfirm; };
 function qaLog(m){ var el=document.getElementById("qaOut"); el.textContent+="\n"+m; }
+window.confirm=function(m){ window.__qaLastConfirm=m; qaLog("CONFIRM DIALOG: "+m); return window.__qaConfirm; };
 document.getElementById("qaConfirmT").addEventListener("click",function(){
   window.__qaConfirm=!window.__qaConfirm;
   document.getElementById("qaConfirmState").textContent=window.__qaConfirm;
@@ -3827,24 +3826,6 @@ document.getElementById("qaSnap").addEventListener("click",async function(){
   var contribs=await supabaseClient.from("goal_contributions").select("id,goal_id,amount").eq("user_id",uid);
   var tx=await supabaseClient.from("transactions").select("id").eq("user_id",uid);
   qaLog("goals="+(goals.data||[]).length+" contribs="+(contribs.data||[]).length+" tx="+(tx.data||[]).length);
-  qaLog("NW assets="+document.getElementById("nwTotalAssets").textContent+
-        " liab="+document.getElementById("nwTotalLiabilities").textContent+
-        " net="+document.getElementById("nwNetWorth").textContent);
-  qaLog("stats income="+document.getElementById("statsIncome").textContent+
-        " expense="+document.getElementById("statsExpense").textContent);
-});
-document.getElementById("qaDbReject").addEventListener("click",async function(){
-  qaLog("=== DB REJECT TEST (bypass UI pre-check) ===");
-  var s=await getSession(); var uid=s.user.id;
-  var g=(await supabaseClient.from("goals").select("id,name").eq("user_id",uid).limit(1)).data;
-  if(!g||!g.length){ qaLog("no goal found - create one first"); return; }
-  var res=await supabaseClient.from("goal_contributions").insert({
-    user_id:uid, goal_id:g[0].id, amount:-999999999, contributed_at:todayStr(), notes:"QA bypass"
-  });
-  qaLog("raw error: "+(res.error?res.error.message:"NONE (UNEXPECTED - trigger did not reject!)"));
-  if(res.error){ qaLog("mapped: "+mapGoalDbError(res.error)); }
-  await loadGoals();
-  qaLog("reloaded after reject - goal list count: "+goalList.length);
 });
 document.getElementById("qaCleanup").addEventListener("click",async function(){
   qaLog("=== CLEANUP ===");
