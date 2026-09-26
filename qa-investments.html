@@ -5411,7 +5411,7 @@ async function qaRun(){
     var m4=await waitDone($("invPriceMessage"));
     ok("nhập giá 35", /^✓/.test(m4), m4);
     await refresh();
-    cv=invCalc(vnmId);
+    var cv=invCalc(vnmId);
     ok("market=10500 cents (3×35)", cv.marketC===10500n, String(cv.marketC));
     ok("unrealized=7498 cents", cv.unrealizedC===7498n, String(cv.unrealizedC));
 
