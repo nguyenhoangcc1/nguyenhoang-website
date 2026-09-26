@@ -821,12 +821,12 @@ function renderInvSummary(){
         note.textContent="";
         return;
     }
-    let mC=0n, cC=0n, rC=0n, anyPrice=false, missing=false;
+    let mC=0n, cC=0n, rC=0n, uC=0n, anyPrice=false, missing=false;
     investmentsCache.forEach(inv=>{
         const c=invCalc(inv.id);
         cC+=c.costC; rC+=c.realizedC;
         if(c.marketC===null){ missing=true; }
-        else{ anyPrice=true; mC+=c.marketC; }
+        else{ anyPrice=true; mC+=c.marketC; uC+=c.unrealizedC; }
     });
     setCard("invTotalCost",fmtCents(cC));
     setCard("invRealized",fmtCents(rC),rC<0n?"expense":(rC>0n?"income":""));
@@ -834,10 +834,9 @@ function renderInvSummary(){
         /* Trạng thái 2: có investment nhưng tất cả chưa có giá */
         setCard("invTotalMarket","—"); setCard("invUnrealized","—");
     }else{
-        /* Trạng thái 3: cộng phần có giá + hint */
+        /* Trạng thái 3: cộng phần có giá + hint — unrealized chỉ tính trên phần có giá */
         setCard("invTotalMarket",fmtCents(mC),"income");
-        const u=mC-cC;
-        setCard("invUnrealized",fmtCents(u),u<0n?"expense":(u>0n?"income":""));
+        setCard("invUnrealized",fmtCents(uC),uC<0n?"expense":(uC>0n?"income":""));
     }
     const lp=invLatestPricedAt();
     note.textContent=(missing?"Một số khoản đầu tư chưa có giá cập nhật. ":"")+
@@ -952,41 +951,87 @@ function invToggleHistory(invId){
     document.querySelectorAll('[id^="invHist-"]').forEach(el=>{ el.style.display="none"; });
     if(!show){ return; }
     box.style.display="";
+    box.textContent="";
     const c=invCalc(invId);
-    let html='<h4 style="margin:6px 0;">Lịch sử lệnh</h4>';
-    if(!c.lots.length){
-        html+='<div class="empty">Chưa có lệnh nào.</div>';
-    }else{
-        html+='<table class="inv-table"><tr><th>Ngày</th><th>Lệnh</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th><th>Tài khoản</th><th></th></tr>';
-        c.lots.forEach(l=>{
-            html+="<tr><td>"+fmtDmy(l.transacted_at)+"</td>"+
-                "<td>"+(l.side==="buy"?"Mua":"Bán")+"</td>"+
-                "<td>"+fmtQty8(decToBig(num8(l.quantity),8))+"</td>"+
-                "<td>"+fmtPrice8(decToBig(num8(l.price),8))+"</td>"+
-                "<td>"+fmtCents(invLotCash(l))+"</td>"+
-                "<td>"+((accountNameById[l.account_id])||"?")+"</td>"+
-                "<td><button type='button' class='add-btn inv-mini' style='background:#dc3545' "+
-                "onclick='invDeleteTrade(\""+l.id+"\")'>Xóa</button></td></tr>";
+    const mkH4=(t,margin)=>{
+        const h=document.createElement("h4");
+        h.style.margin=margin;
+        h.textContent=t;
+        box.appendChild(h);
+    };
+    const mkEmpty=(t)=>{
+        const d=document.createElement("div");
+        d.className="empty";
+        d.textContent=t;
+        box.appendChild(d);
+    };
+    const mkTable=(headers)=>{
+        const tbl=document.createElement("table");
+        tbl.className="inv-table";
+        const hr=document.createElement("tr");
+        headers.forEach(t=>{
+            const th=document.createElement("th");
+            th.textContent=t;
+            hr.appendChild(th);
         });
-        html+="</table>";
+        tbl.appendChild(hr);
+        box.appendChild(tbl);
+        return tbl;
+    };
+    const mkDelBtn=(tbl,tr,onClick)=>{
+        const td=document.createElement("td");
+        const btn=document.createElement("button");
+        btn.type="button";
+        btn.className="add-btn inv-mini";
+        btn.style.background="#dc3545";
+        btn.textContent="Xóa";
+        btn.addEventListener("click",onClick);
+        td.appendChild(btn);
+        tr.appendChild(td);
+        tbl.appendChild(tr);
+    };
+    const mkRow=(tbl,cells)=>{
+        const tr=document.createElement("tr");
+        cells.forEach(t=>{
+            const td=document.createElement("td");
+            td.textContent=t;
+            tr.appendChild(td);
+        });
+        return tr;
+    };
+    mkH4("Lịch sử lệnh","6px 0");
+    if(!c.lots.length){
+        mkEmpty("Chưa có lệnh nào.");
+    }else{
+        const tbl=mkTable(["Ngày","Lệnh","SL","Đơn giá","Thành tiền","Tài khoản",""]);
+        c.lots.forEach(l=>{
+            const tr=mkRow(tbl,[
+                fmtDmy(l.transacted_at),
+                l.side==="buy"?"Mua":"Bán",
+                fmtQty8(decToBig(num8(l.quantity),8)),
+                fmtPrice8(decToBig(num8(l.price),8)),
+                fmtCents(invLotCash(l)),
+                (accountNameById[l.account_id])||"?"
+            ]);
+            mkDelBtn(tbl,tr,()=>invDeleteTrade(l.id));
+        });
     }
     const prices=(invPricesCache||[]).filter(p=>p.investment_id===invId)
         .sort((a,b)=>a.priced_at<b.priced_at?1:(a.priced_at>b.priced_at?-1:0));
-    html+='<h4 style="margin:12px 0 6px;">Lịch sử giá</h4>';
+    mkH4("Lịch sử giá","12px 0 6px");
     if(!prices.length){
-        html+='<div class="empty">Chưa có giá nào.</div>';
+        mkEmpty("Chưa có giá nào.");
     }else{
-        html+='<table class="inv-table"><tr><th>Ngày giá</th><th>Giá</th><th>Ghi chú</th><th></th></tr>';
+        const tbl=mkTable(["Ngày giá","Giá","Ghi chú",""]);
         prices.forEach(p=>{
-            html+="<tr><td>"+fmtDmy(p.priced_at)+"</td>"+
-                "<td>"+fmtPrice8(decToBig(num8(p.price),8))+"</td>"+
-                "<td>"+(p.notes||"")+"</td>"+
-                "<td><button type='button' class='add-btn inv-mini' style='background:#dc3545' "+
-                "onclick='invDeletePrice(\""+p.id+"\")'>Xóa</button></td></tr>";
+            const tr=mkRow(tbl,[
+                fmtDmy(p.priced_at),
+                fmtPrice8(decToBig(num8(p.price),8)),
+                p.notes||""
+            ]);
+            mkDelBtn(tbl,tr,()=>invDeletePrice(p.id));
         });
-        html+="</table>";
     }
-    box.innerHTML=html;
 }
 
 /* ---------- RPC error mapping (D5 — khớp mã RPC thật) ---------- */
@@ -1138,8 +1183,8 @@ document.getElementById("invTradeForm").addEventListener("submit",async function
         p_investment_id:invId,
         p_account_id:accountId,
         p_side:side,
-        p_quantity:q,
-        p_price:p,
+        p_quantity:qtyStr,
+        p_price:priceStr,
         p_transacted_at:date,
         p_notes:document.getElementById("invTradeNotes").value.trim()||null
     });
