@@ -618,10 +618,57 @@ let invEditingId=null;
 const INV_TYPE_LABEL={stock:"Cổ phiếu",crypto:"Crypto",gold:"Vàng",fund:"Chứng chỉ quỹ",other:"Khác"};
 
 /* ---------- Exact decimal (B3) ---------- */
-/* Chuẩn hóa số từ wire về chuỗi decimal đúng 8 chữ số lẻ (numeric(20,8)).
-   Khôi phục giá trị decimal gốc từ float JSON. */
+/* Chuẩn hóa chuỗi decimal về đúng 8 chữ số lẻ (numeric(20,8)).
+   PURE STRING — không bao giờ đi qua Number(): Number() làm mất precision
+   với numeric(20,8) ở giá trị lớn (vd 99999999999999.12345678 →
+   99999999999999.12500000). */
 function num8(x){
-    return Number(x).toFixed(8);
+    let t=String(x).trim();
+    if(!t){ return "0.00000000"; }
+    if(/[eE]/.test(t)){ t=expandSci(t); } /* best-effort nếu input là JS Number */
+    const neg=t[0]==="-";
+    const u=neg?t.slice(1):t;
+    const m=u.match(/^(\d*)(?:\.(\d*))?$/);
+    if(!m){ return "0.00000000"; }
+    let intPart=(m[1]||"0").replace(/^0+(?=\d)/,"");
+    let frac=m[2]||"";
+    if(frac.length>8){
+        /* Làm tròn half-up bằng string math */
+        const keep=frac.slice(0,8);
+        if(frac[8]>="5"){
+            const inc=addOneStr(keep);
+            if(inc.length>8){ intPart=addOneStr(intPart); frac="00000000"; }
+            else{ frac=inc; }
+        }else{ frac=keep; }
+    }else{
+        frac=(frac+"00000000").slice(0,8);
+    }
+    const isZero=intPart==="0"&&frac==="00000000";
+    return (neg&&!isZero?"-":"")+intPart+"."+frac;
+}
+/* Cộng 1 vào chuỗi digits — không dùng Number. */
+function addOneStr(d){
+    const a=d.split("");
+    let i=a.length-1, carry=1;
+    while(i>=0&&carry){
+        const s=(a[i].charCodeAt(0)-48)+carry;
+        carry=s>=10?1:0;
+        a[i]=String(s%10);
+        i--;
+    }
+    return (carry?"1":"")+a.join("");
+}
+/* Mở rộng "1.23e+21" → chuỗi decimal đầy đủ. Best-effort. */
+function expandSci(t){
+    const m=t.match(/^(-?)(\d*)(?:\.(\d*))?[eE]([+-]?\d+)$/);
+    if(!m){ return t; }
+    const digits=((m[2]||"")+(m[3]||"")).replace(/^0+(?=\d)/,"")||"0";
+    const pointPos=(m[2]||"").length+parseInt(m[4],10);
+    let out;
+    if(pointPos<=0){ out="0."+"0".repeat(-pointPos)+digits; }
+    else if(pointPos>=digits.length){ out=digits+"0".repeat(pointPos-digits.length); }
+    else{ out=digits.slice(0,pointPos)+"."+digits.slice(pointPos); }
+    return m[1]+out;
 }
 /* Chuỗi decimal → BigInt scaled 10^scale. Exact, không float. */
 function decToBig(s,scale){
@@ -1244,7 +1291,7 @@ document.getElementById("invPriceForm").addEventListener("submit",async function
     const {error}=await supabaseClient.from("investment_prices").insert({
         user_id:session.user.id,
         investment_id:invId,
-        price:p,
+        price:priceStr,
         priced_at:date,
         source:"manual",
         notes:document.getElementById("invPriceNotes").value.trim()||null
