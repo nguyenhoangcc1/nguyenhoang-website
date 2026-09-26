@@ -5139,7 +5139,15 @@ function log(m){logEl.textContent+=m+"\n";logEl.scrollTop=logEl.scrollHeight;}
 var NP=0,NF=0;
 function ok(n,c,x){if(c){NP++;log("  ✅ "+n);}else{NF++;log("  ❌ "+n+(x?" — "+x:""));} }
 function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
+
 var TP="TEST-E2E-";
+async function phase(name,fn){
+  try{ await fn(); }
+  catch(e){ log("  ❌ EXCEPTION in "+name+": "+(e&&e.stack||e)); }
+}
+window.addEventListener("error",function(ev){
+  try{ log("  ⚠️ window.onerror: "+(ev.error&&ev.error.stack||ev.message)); }catch(_){}
+});
 function num(v){return Number(v);}
 function close(a,b){return Math.abs(num(a)-num(b))<0.005;}
 
@@ -5235,6 +5243,7 @@ async function qaRun(){
     var vcbBal0=balOf("Vietcombank");
 
     /* ---- P1: tạo investment ---- */
+    await phase("P1", async function(){
     log("\n[P1] Tạo investment");
     $("invForm").style.display="";
     $("invName").value=TP+"VNM"; $("invSymbol").value="TST"; $("invType").value="stock"; $("invNotes").value="";
@@ -5246,6 +5255,8 @@ async function qaRun(){
     ok("investment xuất hiện trong cache", !!vnmId);
 
     /* ---- P2: BUY precision 3 × 10.005 ---- */
+    });
+    await phase("P2", async function(){
     log("\n[P2] BUY precision (3 × 10.005 → 30.02)");
     invOpenTrade(vnmId,"buy");
     $("invTradeAccount").value=vcbId; $("invTradeQty").value="3"; $("invTradePrice").value="10.005";
@@ -5267,6 +5278,8 @@ async function qaRun(){
     ok("invCalc cost=3002 cents", cv.costC===3002n, String(cv.costC));
 
     /* ---- P3: SELL replay ---- */
+    });
+    await phase("P3", async function(){
     log("\n[P3] Replay Buy 100@10 → Buy 100@20 → Sell 100@30");
     $("invForm").style.display="";
     $("invName").value=TP+"ABC"; $("invSymbol").value=""; $("invType").value="stock"; $("invNotes").value="";
@@ -5295,6 +5308,8 @@ async function qaRun(){
     ok("tx amounts 1000/2000/3000", JSON.stringify(a)===JSON.stringify([1000,2000,3000]), JSON.stringify(a));
 
     /* ---- P4: giá + market value ---- */
+    });
+    await phase("P4", async function(){
     log("\n[P4] Giá & market value");
     invOpenPrice(vnmId);
     $("invPriceValue").value="35"; $("invPriceDate").value=today; $("invPriceNotes").value="";
@@ -5307,6 +5322,8 @@ async function qaRun(){
     ok("unrealized=7498 cents", cv.unrealizedC===7498n, String(cv.unrealizedC));
 
     /* ---- P5: thiếu giá → '—' ---- */
+    });
+    await phase("P5", async function(){
     log("\n[P5] Thiếu giá → '—'");
     $("invForm").style.display="";
     $("invName").value=TP+"NOPRICE"; $("invSymbol").value=""; $("invType").value="crypto"; $("invNotes").value="";
@@ -5328,12 +5345,16 @@ async function qaRun(){
        $("invPriceNote").textContent.trim().slice(0,60));
 
     /* ---- P6: mixed-price ---- */
+    });
+    await phase("P6", async function(){
     log("\n[P6] Mixed-price");
     ok("marketTotal chỉ cộng khoản có giá (=105)", invMarketTotal()===105, String(invMarketTotal()));
     ok("hint mixed hiện", /Một số khoản đầu tư chưa có giá/.test($("invPriceNote").textContent),
        $("invPriceNote").textContent.trim().slice(0,80));
 
     /* ---- P7: Transactions render/filter ---- */
+    });
+    await phase("P7", async function(){
     log("\n[P7] Transactions render/filter");
     var rows=[].slice.call(document.querySelectorAll("#transactionList .transaction"));
     var invRows=rows.filter(function(r){return /📈|📉/.test(r.textContent);});
@@ -5350,6 +5371,8 @@ async function qaRun(){
     $("filterType").value="all"; $("filterType").dispatchEvent(new Event("change")); await sleep(800);
 
     /* ---- P8: Stats exclusion ---- */
+    });
+    await phase("P8", async function(){
     log("\n[P8] Stats exclusion");
     var inc0=$("statsIncome").textContent, exp0=$("statsExpense").textContent, dif0=$("statsDiff").textContent;
     var txLen0=allTransactions.length, vcb0=balOf("Vietcombank");
@@ -5363,6 +5386,8 @@ async function qaRun(){
     ok("balance VCB giảm đúng 100", close(vcb0-balOf("Vietcombank"),100), String(vcb0-balOf("Vietcombank")));
 
     /* ---- P9: Net Worth ---- */
+    });
+    await phase("P9", async function(){
     log("\n[P9] Net Worth");
     ok("dòng 📈 Đầu tư hiện", /Đầu tư/.test($("nwInvestLine").textContent), $("nwInvestLine").textContent.trim().slice(0,60));
     ok("nwInvestLine = 105 (chỉ VNM có giá; ABC/NOPRICE chưa giá → loại)",
@@ -5372,6 +5397,8 @@ async function qaRun(){
     ok("không tạo net_worth_item cho investment", nwN===window.qaBaseline.nwCount, "hiện "+nwN);
 
     /* ---- P10: error paths (RPC trực tiếp) ---- */
+    });
+    await phase("P10", async function(){
     log("\n[P10] Error paths");
     var lotsBefore=await qCount("investment_lots",function(q){return q.eq("user_id",uid);});
     var e1=await supabaseClient.rpc("create_investment_trade",{p_investment_id:vnmId,p_account_id:vcbId,p_side:"sell",p_quantity:9999,p_price:1,p_transacted_at:today,p_notes:TP});
@@ -5395,13 +5422,19 @@ async function qaRun(){
     ok("form chặn oversell trước RPC", /vượt số lượng đang giữ/.test(m10), m10);
 
     /* ---- P11: delete trade (revert) ---- */
+    });
+    await phase("P11", async function(){
     log("\n[P11] Delete trade → hoàn nguyên");
     await refresh();
     var sellLot=(invLotsCache||[]).find(function(l){return l.investment_id===abcId&&l.side==="sell";});
     ok("tìm được SELL lot", !!sellLot);
+    log("  sellLot="+(sellLot?JSON.stringify({id:sellLot.id,side:sellLot.side,qty:String(sellLot.quantity),price:String(sellLot.price)}):"undefined"));
+    log("  typeof invDeleteTrade="+typeof invDeleteTrade);
     var realC=window.confirm; window.confirm=function(){return true;};
-    await invDeleteTrade(sellLot.id);
-    window.confirm=realC;
+    try{ await invDeleteTrade(sellLot.id); }
+    catch(e){ log("  ❌ invDeleteTrade threw: "+(e&&e.stack||e)); throw e; }
+    finally{ window.confirm=realC; }
+    log("  invMessage="+$("invMessage").textContent.trim());
     await refresh();
     var ca2=invCalc(abcId);
     ok("sau xóa SELL: qty=200", ca2.qty===200, String(ca2.qty));
@@ -5409,12 +5442,15 @@ async function qaRun(){
     ok("sau xóa SELL: cost=300000 cents", ca2.costC===300000n, String(ca2.costC));
 
     /* ---- P12: nút Xóa investment bị disable khi có trade ---- */
+    });
+    await phase("P12", async function(){
     log("\n[P12] Xóa investment có trade → bị chặn");
     var cards=[].slice.call(document.querySelectorAll("#invList > div"));
     var abcCard=cards.find(function(c){return c.textContent.indexOf(TP+"ABC")>=0;});
     var delBtn=abcCard?[].slice.call(abcCard.querySelectorAll("button")).find(function(b){return /Xóa/.test(b.textContent);}):null;
     ok("nút Xóa bị disable khi đã có trade", !!(delBtn&&delBtn.disabled));
 
+    });
   }catch(e){
     log("❌ E2E exception: "+(e&&e.stack||e));
   }finally{
