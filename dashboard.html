@@ -19,7 +19,11 @@ a{text-decoration:none;color:inherit}
 .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:30px}
 .card{background:#fff;border-radius:14px;padding:22px;border:1px solid #e5e7eb}
 .card-title{color:#64748b;font-size:14px;margin-bottom:10px}.card-value{font-size:25px;font-weight:700}
-.income{color:#159957}.expense{color:#dc3545}.balance{color:#2864e8}.transfer{color:#0f766e}
+.income{color:#159957}.expense{color:#dc3545}.balance{color:#2864e8}.transfer{color:#0f766e}.invest{color:#7c3aed}
+.inv-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+.inv-table th,.inv-table td{border:1px solid #e5e7eb;padding:6px 8px;text-align:left}
+.inv-table th{background:#f9fafb;font-weight:600}
+.inv-mini{font-size:12px;padding:5px 10px;margin:2px 4px 2px 0}
 .section{background:#fff;border-radius:14px;border:1px solid #e5e7eb;padding:25px;margin-bottom:25px}
 .section h2{margin-top:0;margin-bottom:20px;font-size:21px}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.form-group{display:flex;flex-direction:column}
@@ -300,6 +304,7 @@ section[id]{scroll-margin-top:100px}
 <input id="nwNotes" placeholder="Không bắt buộc">
 </div>
 </div>
+<div class="stats-note" style="margin:8px 0;">Khoản đầu tư đã được tính tự động ở dòng 📈 Đầu tư — không nhập thủ công trùng (tránh double-counting).</div>
 <div class="nw-warn" id="nwWarn"></div>
 <button class="add-btn" type="submit" id="nwSubmitBtn">+ Thêm</button>
 <button class="add-btn secondary" type="button" id="nwCancelBtn">Hủy</button>
@@ -307,6 +312,7 @@ section[id]{scroll-margin-top:100px}
 </form>
 <h3 class="nw-section-title">Tài sản</h3>
 <div id="nwAssetList"><div class="empty">Chưa có tài sản nào.</div></div>
+<div id="nwInvestLine" style="display:none;margin-bottom:10px;"></div>
 <h3 class="nw-section-title">Khoản nợ</h3>
 <div id="nwLiabilityList"><div class="empty">Chưa có khoản nợ nào.</div></div>
 </section>
@@ -339,6 +345,60 @@ section[id]{scroll-margin-top:100px}
 <div class="message" id="goalMessage"></div>
 </form>
 <div id="goalList" style="margin-top:16px;"><div class="empty">Chưa có mục tiêu nào.</div></div>
+</section>
+
+<section id="investments" class="subsection">
+<h2>📈 Đầu tư</h2>
+<p class="concept-hint">Đầu tư là vị thế trong tài sản có giá biến động (cổ phiếu, crypto, vàng…) — khác với Tài khoản (tiền mặt đang ở đâu), Tài sản &amp; Nợ (giá trị tĩnh đang sở hữu/nợ bao nhiêu) và Mục tiêu (kế hoạch tích lũy).</p>
+<div class="cards" style="grid-template-columns:repeat(4,1fr)">
+<div class="card"><div class="card-title">Tổng giá trị danh mục</div><div class="card-value income" id="invTotalMarket">0 đ</div></div>
+<div class="card"><div class="card-title">Tổng giá vốn</div><div class="card-value" id="invTotalCost">0 đ</div></div>
+<div class="card"><div class="card-title">Lãi/lỗ chưa thực hiện</div><div class="card-value" id="invUnrealized">0 đ</div></div>
+<div class="card"><div class="card-title">Lãi/lỗ đã thực hiện</div><div class="card-value" id="invRealized">0 đ</div></div>
+</div>
+<div class="stats-note" id="invPriceNote" style="margin-top:8px;"></div>
+<div style="margin-top:12px;">
+<button class="add-btn" type="button" id="invAddBtn">+ Thêm khoản đầu tư</button>
+<button class="add-btn secondary" type="button" id="invTradeBtn" style="margin-left:8px;">Mua / Bán</button>
+<button class="add-btn secondary" type="button" id="invPriceBtn" style="margin-left:8px;">Cập nhật giá</button>
+</div>
+<form id="invForm" style="display:none;margin-top:16px;">
+<div class="form-grid">
+<div class="form-group"><label for="invName">Tên khoản đầu tư</label><input id="invName" placeholder="Ví dụ: Cổ phiếu VNM"></div>
+<div class="form-group"><label for="invSymbol">Mã (không bắt buộc)</label><input id="invSymbol" placeholder="Ví dụ: VNM"></div>
+<div class="form-group"><label for="invType">Loại</label><select id="invType"><option value="stock">Cổ phiếu</option><option value="crypto">Crypto</option><option value="gold">Vàng</option><option value="fund">Chứng chỉ quỹ</option><option value="other">Khác</option></select></div>
+<div class="form-group full"><label for="invNotes">Ghi chú</label><input id="invNotes" placeholder="Không bắt buộc"></div>
+</div>
+<button class="add-btn" type="submit" id="invSubmitBtn">+ Thêm</button>
+<button class="add-btn secondary" type="button" id="invCancelBtn">Hủy</button>
+</form>
+<form id="invTradeForm" style="display:none;margin-top:16px;">
+<div class="form-grid">
+<div class="form-group"><label for="invTradeInv">Khoản đầu tư</label><select id="invTradeInv"></select></div>
+<div class="form-group"><label for="invTradeSide">Lệnh</label><select id="invTradeSide"><option value="buy">Mua</option><option value="sell">Bán</option></select></div>
+<div class="form-group"><label for="invTradeAccount">Tài khoản</label><select id="invTradeAccount"></select></div>
+<div class="form-group"><label for="invTradeQty">Số lượng</label><input id="invTradeQty" type="number" min="0" step="any" placeholder="Ví dụ: 100"></div>
+<div class="form-group"><label for="invTradePrice">Đơn giá (VNĐ)</label><input id="invTradePrice" type="number" min="0" step="any" placeholder="Ví dụ: 10000"></div>
+<div class="form-group"><label for="invTradeDate">Ngày</label><input id="invTradeDate" type="date"></div>
+<div class="form-group full"><label for="invTradeNotes">Ghi chú</label><input id="invTradeNotes" placeholder="Không bắt buộc"></div>
+</div>
+<div class="message" id="invTradeMessage"></div>
+<button class="add-btn" type="submit">Thực hiện lệnh</button>
+<button class="add-btn secondary" type="button" id="invTradeCancelBtn">Hủy</button>
+</form>
+<form id="invPriceForm" style="display:none;margin-top:16px;">
+<div class="form-grid">
+<div class="form-group"><label for="invPriceInv">Khoản đầu tư</label><select id="invPriceInv"></select></div>
+<div class="form-group"><label for="invPriceValue">Giá (VNĐ)</label><input id="invPriceValue" type="number" min="0" step="any" placeholder="Ví dụ: 10500"></div>
+<div class="form-group"><label for="invPriceDate">Ngày giá</label><input id="invPriceDate" type="date"></div>
+<div class="form-group full"><label for="invPriceNotes">Ghi chú</label><input id="invPriceNotes" placeholder="Không bắt buộc"></div>
+</div>
+<div class="message" id="invPriceMessage"></div>
+<button class="add-btn" type="submit">Lưu giá</button>
+<button class="add-btn secondary" type="button" id="invPriceCancelBtn">Hủy</button>
+</form>
+<div id="invList" style="margin-top:16px;"><div class="empty">Chưa có khoản đầu tư nào.</div></div>
+<div class="message" id="invMessage"></div>
 </section>
 </section>
 
@@ -390,6 +450,8 @@ section[id]{scroll-margin-top:100px}
 <option value="income">Thu nhập</option>
 <option value="expense">Chi tiêu</option>
 <option value="transfer">Chuyển khoản</option>
+<option value="invest_buy">📈 Mua đầu tư</option>
+<option value="invest_sell">📉 Bán đầu tư</option>
 </select>
 </div>
 <div class="form-group">
@@ -533,12 +595,657 @@ const currentFilters={
    Net Worth inclusion: INDIRECT ONLY — không chạm logic net worth. */
 let categoriesCache=[];
 
+/* ================= INVESTMENTS V1 =================
+   Frontend Plan v1.1 🔒 LOCKED (ChatGPT 🟢 APPROVED 2026-09-26).
+   - Lệnh mua/bán CHỈ qua RPC create_investment_trade / delete_investment_trade.
+   - Cấm mọi direct write vào investment_lots (RLS restrictive đã chặn ở DB).
+   - Tính toán client-side theo §5 plan + quy ước B3: cash = ROUND(qty×price,2)
+     là single source of truth — số học exact bằng BigInt, khớp DB bit-for-bit
+     (đã unit-test: 3×10.005 → 30.02; replay §5.1 cho realized +1.500).
+   - Invest trade hiện trong Transactions (trung tính, không nút Sửa/Xóa),
+     vẫn đếm trong Number of Transactions; loại khỏi mọi stats thu/chi —
+     các aggregate chỉ match type income/expense nên invest_* tự động bị loại
+     (QA-INV-STATS kiểm chứng, không cần sửa hàm stats).
+   - Net Worth: dòng 📈 Đầu tư = Σ market value cộng vào Total Assets (§2);
+     không tạo net_worth_item cho investment (INV-6).
+   Chỉ chạm dashboard.html — không đụng DB/schema/RLS/RPC. */
+
+let investmentsCache=[];
+let invLotsCache=[];
+let invPricesCache=[];
+let invEditingId=null;
+
+const INV_TYPE_LABEL={stock:"Cổ phiếu",crypto:"Crypto",gold:"Vàng",fund:"Chứng chỉ quỹ",other:"Khác"};
+
+/* ---------- Exact decimal (B3) ---------- */
+/* Chuẩn hóa số từ wire về chuỗi decimal đúng 8 chữ số lẻ (numeric(20,8)).
+   Khôi phục giá trị decimal gốc từ float JSON. */
+function num8(x){
+    return Number(x).toFixed(8);
+}
+/* Chuỗi decimal → BigInt scaled 10^scale. Exact, không float. */
+function decToBig(s,scale){
+    const t=String(s).trim();
+    const neg=t[0]==="-";
+    const u=neg?t.slice(1):t;
+    const parts=u.split(".");
+    let digits=((parts[0]||"0")+(parts[1]||"")).replace(/^0+/,"");
+    if(!digits){ digits="0"; }
+    const have=parts[1]?parts[1].length:0;
+    let v=BigInt(digits);
+    if(scale>have){ v=v*(10n**BigInt(scale-have)); }
+    else if(scale<have){ v=v/(10n**BigInt(have-scale)); }
+    return neg?-v:v;
+}
+/* B3: cash = ROUND(quantity × price, 2) — exact, khớp DB. Trả BigInt cents. */
+function cashCents(qtyStr,priceStr){
+    const q=decToBig(qtyStr,8), p=decToBig(priceStr,8);
+    const prod=q*p; /* scaled 1e16 */
+    const div=100000000000000n; /* 1e14 */
+    const quo=prod/div, rem=prod%div;
+    const up=(rem<0n?-rem:rem)*2n>=div;
+    return quo+(up?(prod<0n?-1n:1n):0n);
+}
+/* Giá vốn bình quân per-unit, scaled 1e8, exact. */
+function avgP8(costC,qty8){
+    if(qty8===0n){ return 0n; }
+    const num=costC*100000000000000n, den=qty8;
+    const quo=num/den, rem=num%den;
+    return quo+((rem*2n>=den)?1n:0n);
+}
+/* BigInt cents → "1.234,56 đ" / "0 đ" / "-5 đ" */
+function fmtCents(c){
+    const neg=c<0n;
+    const a=(neg?-c:c).toString().padStart(3,"0");
+    const ip=a.slice(0,-2), fp=a.slice(-2);
+    const grp=ip.replace(/\B(?=(\d{3})+(?!\d))/g,".");
+    const dec=fp==="00"?"":","+fp.replace(/0+$/,"");
+    return (neg?"-":"")+grp+dec+" đ";
+}
+/* BigInt scaled 1e8 → "100" / "0,12345678" (số lượng) */
+function fmtQty8(q8){
+    const neg=q8<0n;
+    const a=(neg?-q8:q8).toString().padStart(9,"0");
+    const ip=(a.slice(0,-8).replace(/^0+/,"")||"0");
+    const fp=a.slice(-8).replace(/0+$/,"");
+    const grp=ip.replace(/\B(?=(\d{3})+(?!\d))/g,".");
+    return (neg?"-":"")+grp+(fp?","+fp:"");
+}
+/* BigInt scaled 1e8 → "10,005 đ" (đơn giá) */
+function fmtPrice8(p8){
+    const neg=p8<0n;
+    const a=(neg?-p8:p8).toString().padStart(9,"0");
+    const ip=(a.slice(0,-8).replace(/^0+/,"")||"0");
+    const fp=a.slice(-8).replace(/0+$/,"");
+    const grp=ip.replace(/\B(?=(\d{3})+(?!\d))/g,".");
+    return (neg?"-":"")+grp+(fp?","+fp:"")+" đ";
+}
+
+/* ---------- Load ---------- */
+async function loadInvestments(userId){
+    const ri=await supabaseClient.from("investments").select("*")
+        .eq("user_id",userId).order("created_at",{ascending:true});
+    const rl=await supabaseClient.from("investment_lots").select("*")
+        .eq("user_id",userId).order("transacted_at",{ascending:true})
+        .order("created_at",{ascending:true}).order("id",{ascending:true});
+    const rp=await supabaseClient.from("investment_prices").select("*")
+        .eq("user_id",userId).order("priced_at",{ascending:false})
+        .order("created_at",{ascending:false}).order("id",{ascending:false});
+    if(ri.error){ console.error(ri.error); }
+    if(rl.error){ console.error(rl.error); }
+    if(rp.error){ console.error(rp.error); }
+    investmentsCache=ri.data||[];
+    invLotsCache=rl.data||[];
+    invPricesCache=rp.data||[];
+    dataLoadedFlags.investments=true;
+    dataLoadedFlags.investment_lots=true;
+    dataLoadedFlags.investment_prices=true;
+    renderInvestments();
+    refreshNetWorthView();
+}
+
+/* ---------- Tính toán (§5 plan + B3) ---------- */
+/* Giá mới nhất: priced_at DESC → created_at DESC → id DESC */
+function invLatestPrice(invId){
+    let best=null;
+    (invPricesCache||[]).forEach(p=>{
+        if(p.investment_id!==invId){ return; }
+        if(!best||
+           p.priced_at>best.priced_at||
+           (p.priced_at===best.priced_at&&
+            (p.created_at>best.created_at||
+             (p.created_at===best.created_at&&p.id>best.id)))){
+            best=p;
+        }
+    });
+    return best;
+}
+
+/* Replay chronological + tie-breaker transacted_at → created_at → id.
+   Mọi tiền tệ tính bằng BigInt cents — khớp DB tuyệt đối. */
+function invCalc(invId){
+    const lots=(invLotsCache||[]).filter(l=>l.investment_id===invId).sort((a,b)=>{
+        if(a.transacted_at!==b.transacted_at){ return a.transacted_at<b.transacted_at?-1:1; }
+        if(a.created_at!==b.created_at){ return a.created_at<b.created_at?-1:1; }
+        return a.id<b.id?-1:(a.id>b.id?1:0);
+    });
+    let qty8=0n, costC=0n, realC=0n;
+    lots.forEach(l=>{
+        const q8=decToBig(num8(l.quantity),8);
+        const cash=cashCents(num8(l.quantity),num8(l.price));
+        if(l.side==="buy"){
+            qty8+=q8; costC+=cash;
+        }else{
+            let relief=0n;
+            if(qty8>0n){
+                const num=costC*q8, den=qty8;
+                const quo=num/den, rem=num%den;
+                relief=quo+((rem*2n>=den)?1n:0n);
+            }
+            realC+=cash-relief;
+            costC-=relief;
+            qty8-=q8;
+        }
+    });
+    const lp=invLatestPrice(invId);
+    let marketC=null;
+    if(lp){
+        const p8=decToBig(num8(lp.price),8);
+        const prod=qty8*p8;
+        const div=100000000000000n;
+        const quo=prod/div, rem=prod%div;
+        const up=(rem<0n?-rem:rem)*2n>=div;
+        marketC=quo+(up?(prod<0n?-1n:1n):0n);
+    }
+    return {
+        lots:lots,
+        qty8:qty8,
+        qty:qty8===0n?0:Number(qty8)/1e8,
+        costC:costC,
+        avgP8:avgP8(costC,qty8),
+        realizedC:realC,
+        marketC:marketC,
+        unrealizedC:marketC===null?null:marketC-costC,
+        latest:lp
+    };
+}
+
+/* Σ market value cho Net Worth (§2 plan).
+   0 = chưa có investment; null = có investment nhưng chưa có giá nào. */
+function invMarketTotal(){
+    if(!investmentsCache.length){ return 0; }
+    let sum=0n, any=false;
+    investmentsCache.forEach(inv=>{
+        const c=invCalc(inv.id);
+        if(c.marketC!==null){ sum+=c.marketC; any=true; }
+    });
+    return any?Number(sum)/100:null;
+}
+
+function invLatestPricedAt(){
+    let mx=null;
+    (invPricesCache||[]).forEach(p=>{ if(!mx||p.priced_at>mx){ mx=p.priced_at; } });
+    return mx;
+}
+
+/* Dòng 📈 Đầu tư trong Net Worth section */
+function renderInvestLine(invMV){
+    const el=document.getElementById("nwInvestLine");
+    if(!el){ return; }
+    if(!investmentsCache.length){
+        el.style.display="none";
+        el.innerHTML="";
+        return;
+    }
+    el.style.display="";
+    el.innerHTML=
+        '<div class="nw-item"><div class="nw-item-left">'+
+        '<div class="nw-item-name">📈 Đầu tư<span class="nw-chip linked">Tự động</span></div>'+
+        '<div class="nw-item-meta">Giá trị thị trường — đã cộng vào Tổng tài sản, không nhập thủ công trùng</div>'+
+        "</div>"+
+        '<div class="nw-item-name">'+(invMV===null?"—":formatMoney(invMV))+"</div></div>";
+}
+
+/* ---------- Render ---------- */
+function renderInvSummary(){
+    const setCard=(id,txt,cls)=>{
+        const el=document.getElementById(id);
+        el.textContent=txt;
+        el.className="card-value "+(cls||"");
+    };
+    const note=document.getElementById("invPriceNote");
+    if(!investmentsCache.length){
+        /* Trạng thái 1: chưa có investment nào → tất cả = 0 */
+        setCard("invTotalMarket","0 đ"); setCard("invTotalCost","0 đ");
+        setCard("invUnrealized","0 đ"); setCard("invRealized","0 đ");
+        note.textContent="";
+        return;
+    }
+    let mC=0n, cC=0n, rC=0n, anyPrice=false, missing=false;
+    investmentsCache.forEach(inv=>{
+        const c=invCalc(inv.id);
+        cC+=c.costC; rC+=c.realizedC;
+        if(c.marketC===null){ missing=true; }
+        else{ anyPrice=true; mC+=c.marketC; }
+    });
+    setCard("invTotalCost",fmtCents(cC));
+    setCard("invRealized",fmtCents(rC),rC<0n?"expense":(rC>0n?"income":""));
+    if(!anyPrice){
+        /* Trạng thái 2: có investment nhưng tất cả chưa có giá */
+        setCard("invTotalMarket","—"); setCard("invUnrealized","—");
+    }else{
+        /* Trạng thái 3: cộng phần có giá + hint */
+        setCard("invTotalMarket",fmtCents(mC),"income");
+        const u=mC-cC;
+        setCard("invUnrealized",fmtCents(u),u<0n?"expense":(u>0n?"income":""));
+    }
+    const lp=invLatestPricedAt();
+    note.textContent=(missing?"Một số khoản đầu tư chưa có giá cập nhật. ":"")+
+        (lp?("Giá cập nhật lúc "+fmtDmy(lp)+" — giá nhập thủ công."):"Chưa có giá nào được cập nhật.");
+}
+
+function fillInvSelects(){
+    const mk=(id,rows,labelFn)=>{
+        const s=document.getElementById(id);
+        if(!s){ return; }
+        const cur=s.value;
+        s.innerHTML='<option value="">-- Chọn --</option>';
+        rows.forEach(r=>{
+            const o=document.createElement("option");
+            o.value=r.id;
+            o.textContent=labelFn(r);
+            s.appendChild(o);
+        });
+        if(cur){ s.value=cur; }
+    };
+    mk("invTradeInv",investmentsCache,
+        inv=>inv.name+(inv.symbol?" ("+inv.symbol+")":""));
+    mk("invPriceInv",investmentsCache,
+        inv=>inv.name+(inv.symbol?" ("+inv.symbol+")":""));
+    mk("invTradeAccount",accountsCache,
+        a=>a.name+" ("+formatMoney(Number(a.balance||0))+")");
+}
+
+function invLotCash(l){
+    return cashCents(num8(l.quantity),num8(l.price));
+}
+
+function renderInvestments(){
+    renderInvSummary();
+    fillInvSelects();
+    const list=document.getElementById("invList");
+    if(!investmentsCache.length){
+        list.innerHTML='<div class="empty">Chưa có khoản đầu tư nào.</div>';
+        return;
+    }
+    list.innerHTML="";
+    investmentsCache.forEach(inv=>{
+        const c=invCalc(inv.id);
+        const card=document.createElement("div");
+        card.className="goal-card";
+
+        const head=document.createElement("div");
+        head.className="goal-card-head";
+        const name=document.createElement("div");
+        name.className="goal-card-name";
+        name.textContent=inv.name+(inv.symbol?" ("+inv.symbol+")":"");
+        const chip=document.createElement("span");
+        chip.className="nw-chip linked";
+        chip.style.marginLeft="8px";
+        chip.textContent=INV_TYPE_LABEL[inv.type]||inv.type;
+        name.appendChild(chip);
+        head.appendChild(name);
+        card.appendChild(head);
+
+        const stats=document.createElement("div");
+        stats.className="transaction-date";
+        stats.style.margin="8px 0";
+        const mvTxt=c.marketC===null?"—":fmtCents(c.marketC);
+        const uvTxt=c.unrealizedC===null?"—":fmtCents(c.unrealizedC);
+        stats.textContent=
+            "Giữ: "+fmtQty8(c.qty8)+
+            " · Giá vốn BQ: "+fmtPrice8(c.avgP8)+
+            " · Giá mới nhất: "+(c.latest?fmtPrice8(decToBig(num8(c.latest.price),8))+" ("+fmtDmy(c.latest.priced_at)+")":"—")+
+            " · Giá trị: "+mvTxt+
+            " · Lãi/lỗ: "+uvTxt;
+        card.appendChild(stats);
+
+        const btns=document.createElement("div");
+        const mkBtn=(label,fn,red)=>{
+            const b=document.createElement("button");
+            b.type="button";
+            b.className="add-btn inv-mini";
+            if(red){ b.style.background="#dc3545"; }
+            b.textContent=label;
+            b.onclick=fn;
+            btns.appendChild(b);
+            return b;
+        };
+        mkBtn("Mua",()=>invOpenTrade(inv.id,"buy"));
+        mkBtn("Bán",()=>invOpenTrade(inv.id,"sell"));
+        mkBtn("Giá",()=>invOpenPrice(inv.id));
+        mkBtn("Lịch sử",()=>invToggleHistory(inv.id));
+        mkBtn("Sửa",()=>invOpenEdit(inv));
+        const delBtn=mkBtn("Xóa",()=>invDeleteInvestment(inv),true);
+        if(c.lots.length>0){
+            /* §8.2 plan: đã có trade → không xóa trong V1 */
+            delBtn.disabled=true;
+            delBtn.title="Đã phát sinh lệnh mua/bán — không xóa trong V1";
+            delBtn.style.opacity="0.5";
+        }
+        card.appendChild(btns);
+
+        const hist=document.createElement("div");
+        hist.id="invHist-"+inv.id;
+        hist.style.display="none";
+        hist.style.marginTop="10px";
+        card.appendChild(hist);
+
+        list.appendChild(card);
+    });
+}
+
+/* Lịch sử lệnh + giá của một investment */
+function invToggleHistory(invId){
+    const box=document.getElementById("invHist-"+invId);
+    const show=box.style.display==="none";
+    document.querySelectorAll('[id^="invHist-"]').forEach(el=>{ el.style.display="none"; });
+    if(!show){ return; }
+    box.style.display="";
+    const c=invCalc(invId);
+    let html='<h4 style="margin:6px 0;">Lịch sử lệnh</h4>';
+    if(!c.lots.length){
+        html+='<div class="empty">Chưa có lệnh nào.</div>';
+    }else{
+        html+='<table class="inv-table"><tr><th>Ngày</th><th>Lệnh</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th><th>Tài khoản</th><th></th></tr>';
+        c.lots.forEach(l=>{
+            html+="<tr><td>"+fmtDmy(l.transacted_at)+"</td>"+
+                "<td>"+(l.side==="buy"?"Mua":"Bán")+"</td>"+
+                "<td>"+fmtQty8(decToBig(num8(l.quantity),8))+"</td>"+
+                "<td>"+fmtPrice8(decToBig(num8(l.price),8))+"</td>"+
+                "<td>"+fmtCents(invLotCash(l))+"</td>"+
+                "<td>"+((accountNameById[l.account_id])||"?")+"</td>"+
+                "<td><button type='button' class='add-btn inv-mini' style='background:#dc3545' "+
+                "onclick='invDeleteTrade(\""+l.id+"\")'>Xóa</button></td></tr>";
+        });
+        html+="</table>";
+    }
+    const prices=(invPricesCache||[]).filter(p=>p.investment_id===invId)
+        .sort((a,b)=>a.priced_at<b.priced_at?1:(a.priced_at>b.priced_at?-1:0));
+    html+='<h4 style="margin:12px 0 6px;">Lịch sử giá</h4>';
+    if(!prices.length){
+        html+='<div class="empty">Chưa có giá nào.</div>';
+    }else{
+        html+='<table class="inv-table"><tr><th>Ngày giá</th><th>Giá</th><th>Ghi chú</th><th></th></tr>';
+        prices.forEach(p=>{
+            html+="<tr><td>"+fmtDmy(p.priced_at)+"</td>"+
+                "<td>"+fmtPrice8(decToBig(num8(p.price),8))+"</td>"+
+                "<td>"+(p.notes||"")+"</td>"+
+                "<td><button type='button' class='add-btn inv-mini' style='background:#dc3545' "+
+                "onclick='invDeletePrice(\""+p.id+"\")'>Xóa</button></td></tr>";
+        });
+        html+="</table>";
+    }
+    box.innerHTML=html;
+}
+
+/* ---------- RPC error mapping (D5 — khớp mã RPC thật) ---------- */
+function invRpcError(msg){
+    const code=String(msg||"").split(":")[0].trim();
+    const map={
+        "INVALID_SIDE":"Lệnh không hợp lệ.",
+        "INVALID_QUANTITY":"Số lượng phải lớn hơn 0.",
+        "INVALID_PRICE":"Đơn giá phải lớn hơn 0.",
+        "INVALID_DATE":"Ngày giao dịch không được để trống.",
+        "FUTURE_DATE":"Không được nhập lệnh trong tương lai.",
+        "INVALID_CASH_AMOUNT":"Số tiền giao dịch không hợp lệ.",
+        "OVERSELL":"Không thể bán vượt số lượng đang giữ.",
+        "INSUFFICIENT_BALANCE":"Số dư tài khoản không đủ để mua.",
+        "INSUFFICIENT_BALANCE_ON_REVERT":"Số dư tài khoản không đủ để hoàn nguyên lệnh.",
+        "ACCOUNT_NOT_FOUND":"Dữ liệu không còn tồn tại, tải lại trang.",
+        "INVESTMENT_NOT_FOUND":"Dữ liệu không còn tồn tại, tải lại trang.",
+        "LOT_NOT_FOUND":"Không tìm thấy lệnh.",
+        "DELETE_WOULD_NEGATE":"Không thể xóa: các lệnh sau phụ thuộc vào lệnh này. Hãy xóa các lệnh sau trước."
+    };
+    return map[code]||("Có lỗi: "+msg);
+}
+
+async function invReloadAll(){
+    const session=await getSession();
+    if(!session){ return; }
+    await loadInvestments(session.user.id);
+    await loadAccounts(session.user.id);
+    await loadTransactions(session.user.id);
+}
+
+/* ---------- Form: thêm/sửa investment ---------- */
+function invOpenEdit(inv){
+    invEditingId=inv.id;
+    document.getElementById("invName").value=inv.name||"";
+    document.getElementById("invSymbol").value=inv.symbol||"";
+    document.getElementById("invType").value=inv.type||"other";
+    document.getElementById("invNotes").value=inv.notes||"";
+    document.getElementById("invSubmitBtn").textContent="Lưu";
+    document.getElementById("invForm").style.display="";
+    document.getElementById("invTradeForm").style.display="none";
+    document.getElementById("invPriceForm").style.display="none";
+}
+
+document.getElementById("invAddBtn").addEventListener("click",()=>{
+    invEditingId=null;
+    document.getElementById("invForm").reset();
+    document.getElementById("invSubmitBtn").textContent="+ Thêm";
+    const f=document.getElementById("invForm");
+    f.style.display=f.style.display==="none"?"":"none";
+    document.getElementById("invTradeForm").style.display="none";
+    document.getElementById("invPriceForm").style.display="none";
+});
+document.getElementById("invCancelBtn").addEventListener("click",()=>{
+    invEditingId=null;
+    document.getElementById("invForm").reset();
+    document.getElementById("invForm").style.display="none";
+});
+
+document.getElementById("invForm").addEventListener("submit",async function(e){
+    e.preventDefault();
+    const msg=document.getElementById("invMessage");
+    const session=await getSession();
+    if(!session){ msg.textContent="Phiên đăng nhập đã hết."; return; }
+    const name=document.getElementById("invName").value.trim();
+    if(!name){ msg.textContent="Nhập tên khoản đầu tư."; return; }
+    const payload={
+        name:name,
+        symbol:document.getElementById("invSymbol").value.trim()||null,
+        type:document.getElementById("invType").value,
+        notes:document.getElementById("invNotes").value.trim()||null
+    };
+    msg.textContent="Đang lưu...";
+    let error;
+    if(invEditingId){
+        ({error}=await supabaseClient.from("investments").update(payload)
+            .eq("id",invEditingId).eq("user_id",session.user.id));
+    }else{
+        payload.user_id=session.user.id;
+        payload.currency="VND"; /* V1 chỉ VND */
+        ({error}=await supabaseClient.from("investments").insert(payload));
+    }
+    if(error){ msg.textContent="Có lỗi: "+error.message; return; }
+    msg.textContent=invEditingId?"✓ Đã cập nhật.":"✓ Đã thêm khoản đầu tư.";
+    invEditingId=null;
+    document.getElementById("invForm").reset();
+    document.getElementById("invForm").style.display="none";
+    await loadInvestments(session.user.id);
+});
+
+/* ---------- Form: mua/bán (qua RPC) ---------- */
+function invOpenTrade(invId,side){
+    document.getElementById("invTradeInv").value=invId;
+    document.getElementById("invTradeSide").value=side;
+    document.getElementById("invTradeDate").value=todayStr();
+    document.getElementById("invTradeMessage").textContent="";
+    document.getElementById("invTradeForm").style.display="";
+    document.getElementById("invForm").style.display="none";
+    document.getElementById("invPriceForm").style.display="none";
+    document.getElementById("invTradeForm").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+document.getElementById("invTradeBtn").addEventListener("click",()=>{
+    document.getElementById("invTradeDate").value=todayStr();
+    const f=document.getElementById("invTradeForm");
+    f.style.display=f.style.display==="none"?"":"none";
+    document.getElementById("invForm").style.display="none";
+    document.getElementById("invPriceForm").style.display="none";
+});
+document.getElementById("invTradeCancelBtn").addEventListener("click",()=>{
+    document.getElementById("invTradeForm").style.display="none";
+});
+
+document.getElementById("invTradeForm").addEventListener("submit",async function(e){
+    e.preventDefault();
+    const msg=document.getElementById("invTradeMessage");
+    const session=await getSession();
+    if(!session){ msg.textContent="Phiên đăng nhập đã hết."; return; }
+    const invId=document.getElementById("invTradeInv").value;
+    const side=document.getElementById("invTradeSide").value;
+    const accountId=document.getElementById("invTradeAccount").value;
+    const qtyStr=document.getElementById("invTradeQty").value.trim();
+    const priceStr=document.getElementById("invTradePrice").value.trim();
+    const date=document.getElementById("invTradeDate").value||todayStr();
+    if(!invId){ msg.textContent="Chọn khoản đầu tư."; return; }
+    if(!accountId){ msg.textContent="Chọn tài khoản."; return; }
+    const q=Number(qtyStr), p=Number(priceStr);
+    if(!(q>0)){ msg.textContent="Số lượng phải lớn hơn 0."; return; }
+    if(!(p>0)){ msg.textContent="Đơn giá phải lớn hơn 0."; return; }
+    if(date>todayStr()){ msg.textContent="Không được nhập lệnh trong tương lai."; return; }
+    /* Precheck UX-only — DB RPC là quyết định cuối */
+    if(side==="sell"){
+        const c=invCalc(invId);
+        if(q>c.qty){
+            msg.textContent="Không thể bán vượt số lượng đang giữ ("+fmtQty8(c.qty8)+").";
+            return;
+        }
+    }else{
+        const acc=(accountsCache||[]).find(a=>a.id===accountId);
+        if(acc&&acc.type!=="credit"){
+            const balC=BigInt(Math.round(Number(acc.balance||0)*100));
+            if(balC<cashCents(qtyStr,priceStr)){
+                msg.textContent="Số dư tài khoản không đủ để mua.";
+                return;
+            }
+        }
+    }
+    msg.textContent="Đang thực hiện...";
+    const {error}=await supabaseClient.rpc("create_investment_trade",{
+        p_investment_id:invId,
+        p_account_id:accountId,
+        p_side:side,
+        p_quantity:q,
+        p_price:p,
+        p_transacted_at:date,
+        p_notes:document.getElementById("invTradeNotes").value.trim()||null
+    });
+    if(error){ msg.textContent=invRpcError(error.message); return; }
+    msg.textContent="✓ Đã thực hiện lệnh.";
+    document.getElementById("invTradeQty").value="";
+    document.getElementById("invTradePrice").value="";
+    document.getElementById("invTradeNotes").value="";
+    await invReloadAll();
+});
+
+/* ---------- Xóa lệnh (qua RPC atomic) ---------- */
+async function invDeleteTrade(lotId){
+    if(!confirm("Xóa lệnh này sẽ hoàn nguyên số dư tài khoản. Tiếp tục?")){ return; }
+    const msg=document.getElementById("invMessage");
+    msg.textContent="Đang xóa...";
+    const {error}=await supabaseClient.rpc("delete_investment_trade",{p_lot_id:lotId});
+    if(error){ msg.textContent=invRpcError(error.message); return; }
+    msg.textContent="✓ Đã xóa lệnh.";
+    await invReloadAll();
+}
+
+/* ---------- Form: cập nhật giá ---------- */
+function invOpenPrice(invId){
+    document.getElementById("invPriceInv").value=invId;
+    document.getElementById("invPriceDate").value=todayStr();
+    document.getElementById("invPriceMessage").textContent="";
+    document.getElementById("invPriceForm").style.display="";
+    document.getElementById("invForm").style.display="none";
+    document.getElementById("invTradeForm").style.display="none";
+    document.getElementById("invPriceForm").scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+document.getElementById("invPriceBtn").addEventListener("click",()=>{
+    document.getElementById("invPriceDate").value=todayStr();
+    const f=document.getElementById("invPriceForm");
+    f.style.display=f.style.display==="none"?"":"none";
+    document.getElementById("invForm").style.display="none";
+    document.getElementById("invTradeForm").style.display="none";
+});
+document.getElementById("invPriceCancelBtn").addEventListener("click",()=>{
+    document.getElementById("invPriceForm").style.display="none";
+});
+
+document.getElementById("invPriceForm").addEventListener("submit",async function(e){
+    e.preventDefault();
+    const msg=document.getElementById("invPriceMessage");
+    const session=await getSession();
+    if(!session){ msg.textContent="Phiên đăng nhập đã hết."; return; }
+    const invId=document.getElementById("invPriceInv").value;
+    const priceStr=document.getElementById("invPriceValue").value.trim();
+    const date=document.getElementById("invPriceDate").value||todayStr();
+    if(!invId){ msg.textContent="Chọn khoản đầu tư."; return; }
+    const p=Number(priceStr);
+    if(!(p>0)){ msg.textContent="Giá phải lớn hơn 0."; return; }
+    if(date>todayStr()){ msg.textContent="Không được nhập giá trong tương lai."; return; }
+    msg.textContent="Đang lưu...";
+    const {error}=await supabaseClient.from("investment_prices").insert({
+        user_id:session.user.id,
+        investment_id:invId,
+        price:p,
+        priced_at:date,
+        source:"manual",
+        notes:document.getElementById("invPriceNotes").value.trim()||null
+    });
+    if(error){ msg.textContent="Có lỗi: "+error.message; return; }
+    msg.textContent="✓ Đã cập nhật giá.";
+    document.getElementById("invPriceValue").value="";
+    document.getElementById("invPriceNotes").value="";
+    await loadInvestments(session.user.id);
+});
+
+async function invDeletePrice(priceId){
+    if(!confirm("Xóa bản ghi giá này?")){ return; }
+    const msg=document.getElementById("invMessage");
+    const {error}=await supabaseClient.from("investment_prices").delete().eq("id",priceId);
+    if(error){ msg.textContent="Có lỗi: "+error.message; return; }
+    msg.textContent="✓ Đã xóa giá.";
+    const session=await getSession();
+    if(session){ await loadInvestments(session.user.id); }
+}
+
+/* ---------- Xóa investment (§8.2: chỉ khi chưa có trade) ---------- */
+async function invDeleteInvestment(inv){
+    const c=invCalc(inv.id);
+    if(c.lots.length>0){
+        document.getElementById("invMessage").textContent=
+            "Đã phát sinh lệnh mua/bán — không xóa trong V1.";
+        return;
+    }
+    if(!confirm("Xóa khoản đầu tư \""+inv.name+"\"?")){ return; }
+    const msg=document.getElementById("invMessage");
+    const session=await getSession();
+    if(!session){ msg.textContent="Phiên đăng nhập đã hết."; return; }
+    const {error}=await supabaseClient.from("investments").delete()
+        .eq("id",inv.id).eq("user_id",session.user.id);
+    if(error){ msg.textContent="Có lỗi: "+error.message; return; }
+    msg.textContent="✓ Đã xóa khoản đầu tư.";
+    await loadInvestments(session.user.id);
+}
+
 /* ============ DATA EXPORT / BACKUP V1 ============
    Cờ "đã load" cho từng dataset — phục vụ quy tắc cứng (plan v1.1 §4.2):
    export/backup CHỈ dùng dữ liệu đã có trong application state,
    KHÔNG tạo query mới, KHÔNG auto-fetch thêm. Mỗi cờ được bật bằng
    đúng 1 dòng ở cuối hàm load hiện có — không đổi logic các hàm đó. */
-const dataLoadedFlags={accounts:false,transactions:false,categories:false,net_worth_items:false,goals:false,goal_contributions:false};
+const dataLoadedFlags={accounts:false,transactions:false,categories:false,net_worth_items:false,goals:false,goal_contributions:false,investments:false,investment_lots:false,investment_prices:false};
 
 /* Full rows của goal_contributions. Query aggregate của Goals V1 chỉ lấy
    (goal_id,amount) nên không đủ fidelity cho backup (plan v1.1 Q1) —
@@ -1071,6 +1778,7 @@ async function loadDashboard(){
     await loadTransactions(session.user.id);
     await loadNetWorth(session.user.id);
     await loadGoals();
+    await loadInvestments(session.user.id);
 
     initTransactionFilters();
     initStats();
@@ -2673,6 +3381,7 @@ function renderTransactions(data){
     data.slice(0,displayedCount).forEach(t=>{
 
         const isTransfer=t.type==="transfer";
+        const isInvestTrade=t.type==="invest_buy"||t.type==="invest_sell";
 
         const row=document.createElement("div");
         row.className="transaction";
@@ -2687,6 +3396,11 @@ function renderTransactions(data){
             desc.textContent=
                 "↔ "+
                 (t.description||"Chuyển khoản");
+        }else if(isInvestTrade){
+            /* INVESTMENTS V1: invest trade hiện trong ledger, trung tính */
+            desc.textContent=
+                (t.type==="invest_buy"?"📈 ":"📉 ")+
+                (t.description||"Đầu tư");
         }else{
             desc.textContent=
                 t.description||
@@ -2705,6 +3419,12 @@ function renderTransactions(data){
                 (accountNameById[t.account_id]||"?")+
                 " → "+
                 (accountNameById[t.destination_account_id]||"?");
+        }else if(isInvestTrade){
+            /* destination_account_id luôn NULL với invest trade (§6 plan) */
+            date.textContent=
+                t.transaction_date+
+                " • "+
+                (accountNameById[t.account_id]||"?");
         }else{
             date.textContent=
                 t.transaction_date+
@@ -2734,6 +3454,11 @@ function renderTransactions(data){
             amount.textContent=
                 formatMoney(Number(t.amount));
             amount.classList.add("transfer");
+        }else if(isInvestTrade){
+            /* Invest trade: dòng tiền trung tính, không tính vào thu/chi (INV-4) */
+            amount.textContent=
+                formatMoney(Number(t.amount));
+            amount.classList.add("invest");
         }else{
             amount.textContent=
                 (t.type==="income"?"+ ":"- ")+
@@ -2783,8 +3508,12 @@ function renderTransactions(data){
 
 
         right.appendChild(amount);
-        right.appendChild(editBtn);
-        right.appendChild(deleteBtn);
+        if(!isInvestTrade){
+            /* INVESTMENTS V1 (INV-10): invest trade immutable ở Transactions
+               list — chỉ thao tác trong Investments section qua RPC atomic. */
+            right.appendChild(editBtn);
+            right.appendChild(deleteBtn);
+        }
 
         row.appendChild(left);
         row.appendChild(right);
@@ -3670,6 +4399,11 @@ function renderNetWorth(){
         const v=nwItemValue(it);
         if(it.type==="asset") assets+=v; else liabs+=v;
     });
+    /* INVESTMENTS V1 (§2 plan): 📈 Đầu tư = Σ market value → Total Assets.
+       Không tạo net_worth_item cho investment (INV-6). */
+    const invMV=invMarketTotal();
+    assets+=(invMV||0);
+    renderInvestLine(invMV);
     const net=assets-liabs;
     document.getElementById("nwTotalAssets").textContent=formatMoney(assets);
     document.getElementById("nwTotalLiabilities").textContent=formatMoney(liabs);
