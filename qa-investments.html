@@ -5160,6 +5160,7 @@ async function waitDone(msgEl,timeout){
   }
   return "TIMEOUT: "+msgEl.textContent.trim();
 }
+async function tradeWait(el){ var m=await waitDone(el); await invReloadAll(); return m; }
 async function refresh(){ await loadDashboard(); await sleep(400); }
 function balOf(name){var a=(accountsCache||[]).find(function(a){return a.name===name;});return a?num(a.balance):null;}
 function accIdOf(name){var a=(accountsCache||[]).find(function(a){return a.name===name;});return a?a.id:null;}
@@ -5240,6 +5241,7 @@ async function qaRun(){
     ["ăn cơm","HSBC","the ATM","TPBANK","Vietcombank"].forEach(function(n){window.qaBaseline.balances[n]=balOf(n);});
     log("📸 Baseline: VCB="+window.qaBaseline.balances["Vietcombank"]+", tx="+window.qaBaseline.txLen+", nwItems="+window.qaBaseline.nwCount);
     var vcbId=accIdOf("Vietcombank"), comId=accIdOf("ăn cơm"), today=todayStr();
+    var vnmId=null, abcId=null, npId=null; // hoisted: shared across phases (v3 fix)
     var vcbBal0=balOf("Vietcombank");
 
     /* ---- P1: tạo investment ---- */
@@ -5251,7 +5253,7 @@ async function qaRun(){
     var m1=await waitDone($("invMessage"));
     ok("tạo investment qua form", /^✓/.test(m1), m1);
     await refresh();
-    var vnmId=invIdOf(TP+"VNM");
+    vnmId=invIdOf(TP+"VNM");
     ok("investment xuất hiện trong cache", !!vnmId);
 
     /* ---- P2: BUY precision 3 × 10.005 ---- */
@@ -5262,7 +5264,7 @@ async function qaRun(){
     $("invTradeAccount").value=vcbId; $("invTradeQty").value="3"; $("invTradePrice").value="10.005";
     $("invTradeDate").value=today; $("invTradeNotes").value=TP;
     $("invTradeForm").dispatchEvent(new Event("submit",{cancelable:true}));
-    var m2=await waitDone($("invTradeMessage"));
+    var m2=await tradeWait($("invTradeMessage"));
     ok("BUY qua form+RPC", /^✓/.test(m2), m2);
     await refresh();
     var lots=await supabaseClient.from("investment_lots").select("id,quantity,price,side,linked_transaction_id").eq("user_id",uid).eq("investment_id",vnmId);
@@ -5285,13 +5287,13 @@ async function qaRun(){
     $("invName").value=TP+"ABC"; $("invSymbol").value=""; $("invType").value="stock"; $("invNotes").value="";
     $("invForm").dispatchEvent(new Event("submit",{cancelable:true}));
     await waitDone($("invMessage")); await refresh();
-    var abcId=invIdOf(TP+"ABC");
+    abcId=invIdOf(TP+"ABC");
     async function buySell(side,qty,price){
       invOpenTrade(abcId,side);
       $("invTradeAccount").value=vcbId; $("invTradeQty").value=String(qty); $("invTradePrice").value=String(price);
       $("invTradeDate").value=today; $("invTradeNotes").value=TP;
       $("invTradeForm").dispatchEvent(new Event("submit",{cancelable:true}));
-      return await waitDone($("invTradeMessage"));
+      return await tradeWait($("invTradeMessage"));
     }
     ok("buy 100@10", /^✓/.test(await buySell("buy",100,10)));
     ok("buy 100@20", /^✓/.test(await buySell("buy",100,20)));
@@ -5329,12 +5331,12 @@ async function qaRun(){
     $("invName").value=TP+"NOPRICE"; $("invSymbol").value=""; $("invType").value="crypto"; $("invNotes").value="";
     $("invForm").dispatchEvent(new Event("submit",{cancelable:true}));
     await waitDone($("invMessage")); await refresh();
-    var npId=invIdOf(TP+"NOPRICE");
+    npId=invIdOf(TP+"NOPRICE");
     invOpenTrade(npId,"buy");
     $("invTradeAccount").value=vcbId; $("invTradeQty").value="10"; $("invTradePrice").value="5";
     $("invTradeDate").value=today; $("invTradeNotes").value=TP;
     $("invTradeForm").dispatchEvent(new Event("submit",{cancelable:true}));
-    await waitDone($("invTradeMessage")); await refresh();
+    await tradeWait($("invTradeMessage")); await refresh();
     var cn=invCalc(npId);
     ok("marketC=null khi chưa có giá", cn.marketC===null, String(cn.marketC));
     var npCard=[].slice.call(document.querySelectorAll("#invList > div"))
@@ -5418,7 +5420,7 @@ async function qaRun(){
     $("invTradeAccount").value=vcbId; $("invTradeQty").value="9999"; $("invTradePrice").value="1";
     $("invTradeDate").value=today; $("invTradeNotes").value=TP;
     $("invTradeForm").dispatchEvent(new Event("submit",{cancelable:true}));
-    var m10=await waitDone($("invTradeMessage"));
+    var m10=await tradeWait($("invTradeMessage"));
     ok("form chặn oversell trước RPC", /vượt số lượng đang giữ/.test(m10), m10);
 
     /* ---- P11: delete trade (revert) ---- */
