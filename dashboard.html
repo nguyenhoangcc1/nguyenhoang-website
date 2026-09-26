@@ -1050,7 +1050,7 @@ function invToggleHistory(invId){
     if(!c.lots.length){
         mkEmpty("Chưa có lệnh nào.");
     }else{
-        const tbl=mkTable(["Ngày","Lệnh","SL","Đơn giá","Thành tiền","Tài khoản",""]);
+        const tbl=mkTable(["Ngày","Lệnh","SL","Đơn giá","Thành tiền","Tài khoản","Ghi chú",""]);
         c.lots.forEach(l=>{
             const tr=mkRow(tbl,[
                 fmtDmy(l.transacted_at),
@@ -1058,7 +1058,8 @@ function invToggleHistory(invId){
                 fmtQty8(decToBig(num8(l.quantity),8)),
                 fmtPrice8(decToBig(num8(l.price),8)),
                 fmtCents(invLotCash(l)),
-                (accountNameById[l.account_id])||"?"
+                (accountNameById[l.account_id])||"?",
+                l.notes||""
             ]);
             mkDelBtn(tbl,tr,()=>invDeleteTrade(l.id));
         });
