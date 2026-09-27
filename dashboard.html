@@ -152,6 +152,13 @@ section[id]{scroll-margin-top:100px}
 </div>
 
 <div class="section">
+<h2>📈 Lịch sử Tài sản ròng</h2>
+<div class="stats-note">Biểu đồ thể hiện các mốc Tài sản ròng đã được ghi nhận; không phải số dư cuối ngày tự động.</div>
+<div id="hnwChart" class="stats-chart"><div class="empty">Đang tải...</div></div>
+<div id="hnwStartNote" class="stats-note"></div>
+</div>
+
+<div class="section">
 <h2>📊 Thống kê</h2>
 <div class="stats-tabs" id="statsTabs">
 <button type="button" data-mode="day">Theo ngày</button>
@@ -1855,6 +1862,15 @@ async function loadDashboard(){
 
     const user=session.user;
 
+    /* #13 HISTORICAL NET WORTH (Frontend Plan v1.0 D2 — 🔒 LOCKED):
+       Capture snapshot khi Dashboard load. Chạy song song, không chặn luồng load,
+       không bao giờ throw — dashboard phải sống sót mọi lỗi capture.
+       Promise.resolve().then() chống cả synchronous throw lẫn rejected promise. */
+    const hnwCaptureDone = Promise.resolve()
+        .then(() => supabaseClient.rpc("capture_net_worth_snapshot"))
+        .then(({error}) => { if (error) console.warn("[HNW] capture failed:", error.message); })
+        .catch(e => console.warn("[HNW] capture failed:", e));
+
     const name=
         user.user_metadata?.full_name||
         user.user_metadata?.name||
@@ -1872,6 +1888,12 @@ async function loadDashboard(){
     await loadNetWorth(session.user.id);
     await loadGoals();
     await loadInvestments(session.user.id);
+
+    /* #13 HISTORICAL NET WORTH (Frontend Plan v1.0 D4 — 🔒 LOCKED):
+       Fetch chart SAU khi capture settle để điểm hôm nay luôn có mặt.
+       hnwCaptureDone không bao giờ reject; loadHnwSnapshots tự bọc try/catch (D12). */
+    await hnwCaptureDone;
+    await loadHnwSnapshots(user.id);
 
     initTransactionFilters();
     initStats();
@@ -4484,6 +4506,98 @@ async function loadNetWorth(userId){
 function refreshNetWorthView(){
     if(!document.getElementById("nwTotalAssets")) return;
     renderNetWorth();
+}
+
+/* ============================================================================
+   #13 HISTORICAL NET WORTH — frontend (Frontend Plan v1.0 🟢 APPROVED + 🔒 LOCKED)
+   - Chỉ đọc bảng public.net_worth_snapshots + gọi RPC capture_net_worth_snapshot.
+   - Additive only: không đụng logic #1–#12, không sửa Net Worth section hiện tại.
+   ============================================================================ */
+
+/* Parse "YYYY-MM-DD" thủ công — CẤM new Date(str) (parse UTC → lệch ngày ở +07, D5). */
+function hnwParseDate(s){
+    const p=s.split("-");
+    return {y:+p[0], m:+p[1], d:+p[2], t:Date.UTC(+p[0],+p[1]-1,+p[2])};
+}
+function hnwFmtDM(s){
+    const p=hnwParseDate(s);
+    return String(p.d).padStart(2,"0")+"/"+String(p.m).padStart(2,"0");
+}
+function hnwFmtDMY(s){
+    const p=hnwParseDate(s);
+    return String(p.d).padStart(2,"0")+"/"+String(p.m).padStart(2,"0")+"/"+p.y;
+}
+
+/* Vẽ đường Net Worth theo thời gian — SVG hand-rolled, không CDN (D3).
+   snaps: [{d:"YYYY-MM-DD", net:Number}] đã sort tăng dần theo d.
+   - Trục X theo số ngày thực; chỉ nối 2 điểm cách nhau đúng 1 ngày
+     (HNW-5: ngày trống = đứt đoạn, không nội suy).
+   - Tooltip <title> native: chỉ Net Worth, không breakdown (D6). */
+function drawHnwLine(snaps){
+    const W=720,H=260,padL=14,padR=70,padT=18,padB=30;
+    const n=snaps.length;
+    const ts=snaps.map(s=>hnwParseDate(s.d).t);
+    const vals=snaps.map(s=>s.net);
+    let minY=Math.min.apply(null,vals), maxY=Math.max.apply(null,vals);
+    if(minY===maxY){ minY-=1; maxY+=1; } /* guard chia cho 0 (pattern C-EDGE-2, D9) */
+    const plotW=W-padL-padR, plotH=H-padT-padB;
+    const yb=H-padB;
+    const t0=ts[0], t1=ts[n-1], span=(t1-t0)||1;
+    const X=i=>n===1 ? padL+plotW/2 : padL+plotW*(ts[i]-t0)/span;
+    const Y=v=>padT+plotH*(1-(v-minY)/(maxY-minY));
+    let s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Bieu do lich su tai san rong">';
+    if(minY<0&&maxY>0){ /* D9: zero-line khi có giá trị âm */
+        const y0=Y(0);
+        s+='<line x1="'+padL+'" y1="'+y0.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y0.toFixed(1)+'" stroke="#cbd5e1" stroke-dasharray="4 3"/>';
+    }
+    s+='<text x="'+(W-padR+4)+'" y="'+(padT+4)+'" font-size="11" fill="#94a3b8">'+formatMoney(maxY)+'</text>';
+    s+='<text x="'+(W-padR+4)+'" y="'+(yb+4)+'" font-size="11" fill="#94a3b8">'+formatMoney(minY)+'</text>';
+    /* Gom các run liên tiếp cách nhau đúng 1 ngày → mỗi run 1 polyline (gap đứt đoạn). */
+    const DAY=86400000;
+    let runStart=0;
+    const runs=[];
+    for(let i=1;i<n;i++){
+        if(ts[i]-ts[i-1]!==DAY){ runs.push([runStart,i-1]); runStart=i; }
+    }
+    runs.push([runStart,n-1]);
+    runs.forEach(r=>{
+        if(r[1]<=r[0]) return; /* run 1 điểm: chỉ vẽ circle, không polyline */
+        const pts=[];
+        for(let i=r[0];i<=r[1];i++) pts.push(X(i).toFixed(1)+","+Y(vals[i]).toFixed(1));
+        s+='<polyline points="'+pts.join(" ")+'" fill="none" stroke="#2864e8" stroke-width="2"/>';
+    });
+    vals.forEach((v,i)=>{
+        s+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(v).toFixed(1)+'" r="3.5" fill="#2864e8"><title>'+hnwFmtDMY(snaps[i].d)+": "+formatMoney(v)+'</title></circle>';
+    });
+    const step=n>20?Math.ceil(n/15):1;
+    for(let i=0;i<n;i+=step){
+        s+='<text x="'+X(i).toFixed(1)+'" y="'+(H-10)+'" text-anchor="middle" font-size="11" fill="#64748b">'+hnwFmtDM(snaps[i].d)+'</text>';
+    }
+    s+='</svg>';
+    return s;
+}
+
+/* Fetch + render chart. Toàn bộ bọc try/catch (D12): mọi exception bất ngờ từ
+   SELECT/map/draw/format đều bị chặn tại đây → graceful state trong chart div,
+   KHÔNG bao giờ throw ngược lên loadDashboard(). */
+async function loadHnwSnapshots(userId){
+    const el=document.getElementById("hnwChart");
+    try{
+        const {data,error}=await supabaseClient
+            .from("net_worth_snapshots")
+            .select("snapshot_date,net_worth")
+            .eq("user_id",userId)
+            .order("snapshot_date",{ascending:true});
+        if(error) throw new Error(error.message);
+        const snaps=(data||[]).map(r=>({d:r.snapshot_date, net:Number(r.net_worth)}));
+        if(!snaps.length){ el.innerHTML='<div class="empty">Chưa có dữ liệu.</div>'; return; }
+        el.innerHTML=drawHnwLine(snaps)+
+            '<div class="stats-legend"><span><span class="stats-dot" style="background:#2864e8"></span>Tài sản ròng</span></div>';
+        document.getElementById("hnwStartNote").textContent="Biểu đồ bắt đầu từ "+hnwFmtDMY(snaps[0].d)+".";
+    }catch(e){
+        console.warn("[HNW] load failed:", e && e.message ? e.message : e);
+        el.innerHTML='<div class="empty">Không tải được lịch sử tài sản ròng.</div>';
+    }
 }
 
 function renderNetWorth(){
