@@ -6116,7 +6116,7 @@ function renderAnalyticsCashflow(){
 
 /* ---------- 🛒 Chi tiêu ---------- */
 function renderAnalyticsSpending(){
-    if(window.__QA14_FORCE_ERR){ throw new Error('QA14 forced error'); }
+    throw new Error('QA14 forced error'); /* TEMP QA: forced error for error-isolation test */
     var ym=analyticsState.spendMonth;
     var m=categoryExpenseByMonth(allTransactions,categoriesCache,[ym]);
     var roots=(categoriesCache||[]).filter(function(c){ return !c.parent_id; });
