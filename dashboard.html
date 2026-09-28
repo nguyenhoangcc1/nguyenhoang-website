@@ -198,6 +198,10 @@ section[id]{scroll-margin-top:100px}
 <div class="cards" id="anCfCards"></div>
 <div id="anCfChart" class="stats-chart"></div>
 <div id="anCfCumChart" class="stats-chart"></div>
+<h3 class="nw-section-title" style="margin-top:18px;">Savings rate theo tháng</h3>
+<div class="stats-note">Tháng không có thu nhập → "—".</div>
+<div class="analytics-scroll"><table class="inv-table" id="anCfSavings"></table></div>
+<div id="anCfSavingsChart" class="stats-chart"></div>
 <h3 class="nw-section-title" style="margin-top:18px;">Thu/Chi theo tài khoản</h3>
 <div class="analytics-scroll"><table class="inv-table" id="anCfAccounts"></table></div>
 <div class="stats-note">Cột "Transfer ra/vào" tách riêng theo tài khoản, không cộng vào bất kỳ tổng thu/chi nào.</div>
@@ -5516,6 +5520,64 @@ function savingsRateOf(inc,exp){
     return (inc-exp)/inc*100;
 }
 
+/* CF-2 — chuỗi savings rate theo 12 tháng từ buckets (F3, công thức đã khóa).
+   null = tháng không có thu nhập. */
+function cf2SavingsSeries(buckets){
+    return (buckets||[]).map(function(b){ return savingsRateOf(b.income,b.expense); });
+}
+
+/* CF-5/RP-2 — năm trước có income/expense THẬT không.
+   transfer/invest_buy/invest_sell không phải dữ liệu dòng tiền năm trước. */
+function a14HasYearData(txs,prevYear){
+    if(!prevYear){ return false; }
+    return (txs||[]).some(function(t){
+        return t&&t.transaction_date&&t.transaction_date.slice(0,4)===prevYear&&
+            (t.type==="income"||t.type==="expense");
+    });
+}
+
+/* CF-2 — line chart savings rate 12 tháng (SVG hand-rolled, cùng style #14).
+   Tháng null (không thu) → gap, không nối đường. */
+function drawSavingsRateLine(buckets,vals){
+    var W=720,H=260,padL=14,padR=64,padT=18,padB=30;
+    var n=(buckets||[]).length;
+    var nums=(vals||[]).filter(function(v){ return v!=null; });
+    if(nums.length===0){ return '<div class="empty">Chưa có dữ liệu.</div>'; }
+    var minY=Math.min.apply(null,nums.concat([0]));
+    var maxY=Math.max.apply(null,nums.concat([0]));
+    if(minY===maxY){ minY-=1; maxY+=1; } /* tránh chia cho 0 */
+    var plotW=W-padL-padR, plotH=H-padT-padB, yb=H-padB;
+    var X=function(i){ return padL+plotW*(n<=1?0.5:i/(n-1)); };
+    var Y=function(v){ return padT+plotH*(1-(v-minY)/(maxY-minY)); };
+    var y0=Y(0);
+    var s='<svg viewBox="0 0 '+W+' '+H+'" role="img">';
+    s+='<line x1="'+padL+'" y1="'+y0.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y0.toFixed(1)+'" stroke="#cbd5e1" stroke-dasharray="4 3"/>';
+    s+='<text x="'+(W-padR+4)+'" y="'+(padT+4)+'" font-size="11" fill="#94a3b8">'+fmtPct(maxY)+'</text>';
+    s+='<text x="'+(W-padR+4)+'" y="'+(yb+4)+'" font-size="11" fill="#94a3b8">'+fmtPct(minY)+'</text>';
+    var seg=[];
+    vals.forEach(function(v,i){
+        if(v==null){
+            if(seg.length>1){
+                s+='<polyline points="'+seg.join(" ")+'" fill="none" stroke="#16a34a" stroke-width="2"/>';
+            }
+            seg=[];
+            return;
+        }
+        seg.push(X(i).toFixed(1)+","+Y(v).toFixed(1));
+        s+='<circle cx="'+X(i).toFixed(1)+'" cy="'+Y(v).toFixed(1)+'" r="3" fill="#16a34a"><title>'+
+            a14Esc(buckets[i].label)+": "+fmtPct(v)+"</title></circle>";
+    });
+    if(seg.length>1){
+        s+='<polyline points="'+seg.join(" ")+'" fill="none" stroke="#16a34a" stroke-width="2"/>';
+    }
+    buckets.forEach(function(b,i){
+        s+='<text x="'+X(i).toFixed(1)+'" y="'+(H-10)+'" text-anchor="middle" font-size="11" fill="#64748b">'+
+            a14Esc(b.label)+"</text>";
+    });
+    s+="</svg>";
+    return s;
+}
+
 /* F4 — delta thuần (bản pure của logic renderDelta). */
 function deltaOf(cur,prev){
     cur=a14Num(cur); prev=a14Num(prev);
@@ -5976,6 +6038,15 @@ function renderAnalyticsCashflow(){
     buckets.forEach(function(b){ acc+=(b.income-b.expense); cum.push(acc); labels.push(b.ym+"-01"); });
     a14Set("anCfCumChart",drawCumulativeLine(labels,cum)+
         '<div class="stats-note">Dòng tiền lũy kế 12 tháng — không phải số dư tài khoản.</div>');
+    /* CF-2: savings rate theo 12 tháng + trend (F3 savingsRateOf, công thức đã khóa).
+       Không metric mới, không dùng lại card TB 12 tháng đã loại. */
+    var srVals=cf2SavingsSeries(buckets);
+    var srRows=buckets.map(function(b,i){
+        var sr=srVals[i];
+        return "<tr><td>"+a14Esc(b.label)+"</td><td>"+(sr==null?"—":fmtPct(sr))+"</td></tr>";
+    }).join("");
+    a14Set("anCfSavings","<tr><th>Tháng</th><th>Savings rate</th></tr>"+srRows);
+    a14Set("anCfSavingsChart",drawSavingsRateLine(buckets,srVals));
     /* CF-3: thu/chi theo account_id; transfer tách 2 cột riêng, KHÔNG cộng vào tổng.
        Chỉ trong cửa sổ 12 tháng của section Dòng tiền (ChatGPT final review patch #2). */
     var winTx=(allTransactions||[]).filter(function(t){
@@ -6015,17 +6086,20 @@ function renderAnalyticsCashflow(){
         renderDelta("anDeltaMDiff",lb.income-lb.expense,{value:pb.income-pb.expense,hasData:hasPrev});
     }
     var y0=months.length?months[months.length-1].slice(0,4):"";
-    var yi=0, ye=0, pi2=0, pe2=0, hasY=false;
+    var prevY=y0?String(+y0-1):"";
+    var yi=0, ye=0, pi2=0, pe2=0;
     (allTransactions||[]).forEach(function(t){
         if(!t||!t.transaction_date){ return; }
         var yy=t.transaction_date.slice(0,4), a=Number(t.amount);
         if(yy===y0){
             if(t.type==="income"){ yi+=a; } else if(t.type==="expense"){ ye+=a; }
-        }else if(y0&&yy===String(+y0-1)){
-            hasY=true;
+        }else if(prevY&&yy===prevY){
             if(t.type==="income"){ pi2+=a; } else if(t.type==="expense"){ pe2+=a; }
         }
     });
+    /* CF-5 (ChatGPT re-review #3): hasY chỉ true khi năm trước có income/expense thật —
+       transfer/invest_buy/invest_sell không phải dữ liệu dòng tiền năm trước. */
+    var hasY=a14HasYearData(allTransactions,prevY);
     var yh="";
     if(y0){
         yh+=a14Card("Thu năm "+y0,formatMoney(yi),"income",'<div class="stats-delta" id="anDeltaYInc"></div>');
@@ -6301,10 +6375,25 @@ function renderAnalyticsReports(){
 /* ---------- init ---------- */
 var analyticsState={cfWindow:null,spendMonth:"",reportMonth:"",reportYear:""};
 
+/* Architecture contract: section lỗi → graceful state + console.warn,
+   các section khác vẫn tiếp tục, không throw. */
+var ANALYTICS_SECTION_META={
+    cashflow:{el:"analyticsCashflow",title:"💧 Dòng tiền"},
+    spending:{el:"analyticsSpending",title:"🛒 Chi tiêu"},
+    networth:{el:"analyticsNetworth",title:"📈 Tài sản ròng"},
+    investments:{el:"analyticsInvestments",title:"📊 Đầu tư"},
+    reports:{el:"analyticsReports",title:"📝 Báo cáo"}
+};
 function renderAnalyticsSection(name,fn){
     try{ fn(); }
     catch(e){
         console.warn("[Analytics:"+name+"]",e&&e.message?e.message:e);
+        var meta=ANALYTICS_SECTION_META[name];
+        var sec=meta&&document.getElementById(meta.el);
+        if(sec){
+            sec.innerHTML="<h3>"+meta.title+"</h3>"+
+                '<div class="empty">Không tải được phân tích này. Các phần khác vẫn hoạt động bình thường.</div>';
+        }
     }
 }
 function renderAllAnalytics(){
