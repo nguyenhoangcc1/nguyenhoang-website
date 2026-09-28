@@ -5666,6 +5666,28 @@ function a14ReplayLots(sortedLots){
     });
 }
 
+/* IV-6 helper — realized của từng lệnh sell, replay RIÊNG từng investment.
+   (ChatGPT final review patch #1: không trộn cost basis giữa các investment —
+   bug cũ replay chung toàn bộ lots cho ra 210.000đ thay vì 150.000đ đúng.) */
+function realizedByLotId(lots){
+    var byInv={};
+    (lots||[]).forEach(function(l){
+        if(!l||!l.investment_id){ return; }
+        var arr=byInv[l.investment_id]||(byInv[l.investment_id]=[]);
+        arr.push(l);
+    });
+    var out={};
+    Object.keys(byInv).forEach(function(id){
+        var grp=byInv[id].slice().sort(function(a,b){
+            if(a.transacted_at!==b.transacted_at){ return a.transacted_at<b.transacted_at?-1:1; }
+            if(a.created_at!==b.created_at){ return a.created_at<b.created_at?-1:1; }
+            return a.id<b.id?-1:(a.id>b.id?1:0);
+        });
+        a14ReplayLots(grp).forEach(function(r){ out[r.lot.id]=r.realizedC; });
+    });
+    return out;
+}
+
 /* F14 — IV-5 step series (PHẦN NGUY HIỂM NHẤT — giữ nguyên mọi rule đã khóa):
    - event dates = UNION(priced_at, transacted_at)
    - holdings tại T = cuối ngày T, sau TOÀN BỘ buy/sell ngày T
@@ -5954,14 +5976,20 @@ function renderAnalyticsCashflow(){
     buckets.forEach(function(b){ acc+=(b.income-b.expense); cum.push(acc); labels.push(b.ym+"-01"); });
     a14Set("anCfCumChart",drawCumulativeLine(labels,cum)+
         '<div class="stats-note">Dòng tiền lũy kế 12 tháng — không phải số dư tài khoản.</div>');
-    /* CF-3: thu/chi theo account_id; transfer tách 2 cột riêng, KHÔNG cộng vào tổng */
+    /* CF-3: thu/chi theo account_id; transfer tách 2 cột riêng, KHÔNG cộng vào tổng.
+       Chỉ trong cửa sổ 12 tháng của section Dòng tiền (ChatGPT final review patch #2). */
+    var winTx=(allTransactions||[]).filter(function(t){
+        if(!t||!t.transaction_date){ return false; }
+        var ym=t.transaction_date.slice(0,7);
+        return months.length===0||(ym>=months[0]&&ym<=months[months.length-1]);
+    });
     var perAcc={};
-    (allTransactions||[]).forEach(function(t){
+    winTx.forEach(function(t){
         if((t.type!=="income"&&t.type!=="expense")||t.account_id==null){ return; }
         var e=perAcc[t.account_id]||(perAcc[t.account_id]={income:0,expense:0});
         if(t.type==="income"){ e.income+=Number(t.amount); } else { e.expense+=Number(t.amount); }
     });
-    var tb=transferByAccount(allTransactions,accountsCache);
+    var tb=transferByAccount(winTx,accountsCache);
     var rows=(accountsCache||[]).map(function(a){
         var e=perAcc[a.id]||{income:0,expense:0};
         var t=tb[a.id]||{out:0,in:0};
@@ -6182,14 +6210,13 @@ function renderAnalyticsInvestments(){
     a14Set("anInvAlloc",ah);
     var series=iv5StepSeries(invLotsCache,invPricesCache);
     a14Set("anInvStep",series.length?drawStepLine(series):'<div class="empty">Chưa có dữ liệu.</div>');
-    /* IV-6: lịch sử lệnh + realized từng lệnh sell */
+    /* IV-6: lịch sử lệnh + realized từng lệnh sell (replay riêng từng investment) */
     var lots=(invLotsCache||[]).slice().sort(function(a,b){
         if(a.transacted_at!==b.transacted_at){ return a.transacted_at>b.transacted_at?-1:1; }
         if(a.created_at!==b.created_at){ return a.created_at>b.created_at?-1:1; }
         return a.id>b.id?-1:(a.id<b.id?1:0);
     });
-    var realById={};
-    a14ReplayLots(lots.slice().reverse()).forEach(function(r){ realById[r.lot.id]=r.realizedC; });
+    var realById=realizedByLotId(invLotsCache);
     var invName={};
     invs.forEach(function(v){ invName[v.id]=v.name; });
     var th="<tr><th>Ngày</th><th>Investment</th><th>Mua/Bán</th><th>Số lượng</th><th>Đơn giá</th><th>Thành tiền</th><th>Realized</th></tr>"+
@@ -6222,7 +6249,9 @@ function renderAnalyticsReports(){
     }
     var m5=categoryExpenseByMonth(allTransactions,categoriesCache,[ym]);
     var roots=(categoriesCache||[]).filter(function(c){ return !c.parent_id; });
+    /* ChatGPT final review patch #4: Top 3 chỉ lấy category có chi > 0. */
     var tops=roots.map(function(r){ return {name:r.name,amt:(m5.byRoot[r.id]||{})[ym]||0}; })
+                  .filter(function(x){ return x.amt>0; })
                   .sort(function(a,b){ return b.amt-a.amt; }).slice(0,3);
     a14Set("anRp1Cards",
         a14Card("Thu tháng "+ym,formatMoney(se.inc),"income")+
@@ -6249,7 +6278,9 @@ function renderAnalyticsReports(){
         a14Card("Savings rate năm "+yy,(ysr==null?"—":fmtPct(ysr)),""));
     var pylist=(allTransactions||[]).filter(function(t){ return (t.transaction_date||"").slice(0,4)===String(+yy-1); });
     var pyse=sumIncomeExpense(pylist);
-    var hasPy=pylist.length>0;
+    /* ChatGPT final review patch #3: hasPy chỉ true khi năm trước có income/expense
+       thực sự — transfer/invest_buy/invest_sell không phải dữ liệu thu/chi. */
+    var hasPy=pylist.some(function(t){ return t.type==="income"||t.type==="expense"; });
     renderDelta("anDeltaRpYInc",yse.inc,{value:pyse.inc,hasData:hasPy});
     renderDelta("anDeltaRpYExp",yse.exp,{value:pyse.exp,hasData:hasPy});
     renderDelta("anDeltaRpYDiff",yse.inc-yse.exp,{value:pyse.inc-pyse.exp,hasData:hasPy});
