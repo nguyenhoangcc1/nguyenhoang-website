@@ -74,6 +74,27 @@ section[id]{scroll-margin-top:100px}
 .goal-progress-bar{height:100%;background:#2563eb;border-radius:999px}
 .goal-meta{color:#64748b;font-size:13px}
 .goal-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+/* ===== NGÂN SÁCH (Budget V1 — #15) ===== */
+.budget-card{border:1px solid #e5e7eb;border-radius:10px;margin-bottom:12px;background:#fff;padding:14px}
+.budget-card.inactive{opacity:.55;background:#f8fafc}
+.budget-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.budget-card-name{font-weight:700;font-size:16px}
+.budget-badge{font-size:12px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap}
+.budget-badge.over{background:#fee2e2;color:#991b1b}
+.budget-badge.inactive{background:#e2e8f0;color:#475569}
+.budget-badge.ok{background:#dcfce7;color:#166534}
+.budget-badge.none{background:#f1f5f9;color:#64748b}
+.budget-progress{height:10px;background:#f1f5f9;border-radius:999px;margin:10px 0 6px;overflow:hidden}
+.budget-progress-bar{height:100%;background:#2563eb;border-radius:999px}
+.budget-progress-bar.over{background:#dc2626}
+.budget-meta{color:#64748b;font-size:13px;line-height:1.7}
+.budget-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.budget-summary{display:flex;gap:20px;flex-wrap:wrap;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin-bottom:4px}
+.budget-summary-item{font-size:13px;color:#64748b}
+.budget-summary-item b{display:block;font-size:18px;color:#0f172a;font-weight:700}
+.budget-btn{background:#f1f5f9;border:1px solid #e5e7eb;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;color:#334155}
+.budget-btn:hover{background:#e2e8f0}
+.budget-btn.danger{color:#991b1b}
 .goal-actions .add-btn{margin-top:0;font-size:13px;padding:6px 12px}
 .goal-contrib{margin-top:12px;border-top:1px dashed #e5e7eb;padding-top:10px}
 .goal-contrib-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #f1f5f9;font-size:14px}
@@ -122,6 +143,7 @@ section[id]{scroll-margin-top:100px}
 <a href="#networth">Tài sản &amp; Nợ</a>
 <a href="#goals">Mục tiêu</a>
 <a href="#categories">Danh mục</a>
+<a href="#budgets">Ngân sách</a>
 </nav>
 <div class="nav-right">
 <a class="back-link" href="index.html">← Về website</a>
@@ -482,6 +504,37 @@ section[id]{scroll-margin-top:100px}
 <div id="invList" style="margin-top:16px;"><div class="empty">Chưa có khoản đầu tư nào.</div></div>
 <div class="message" id="invMessage"></div>
 </section>
+</section>
+
+<section id="budgets" class="subsection">
+<h2>💰 Ngân sách</h2>
+<p class="concept-hint">Ngân sách là kế hoạch chi tiêu theo tháng — khác với Tài khoản (tiền thật đang ở đâu) và Giao dịch (tiền đã chi). Vượt ngân sách chỉ là cảnh báo, không chặn chi tiêu.</p>
+<div class="form-group" style="max-width:230px;">
+<label for="budgetMonth">Tháng</label>
+<input type="month" id="budgetMonth">
+</div>
+<button class="add-btn" type="button" id="budgetAddBtn" style="margin-top:12px;">+ Đặt ngân sách</button>
+<form id="budgetForm" style="display:none;margin-top:16px;">
+<div class="form-grid">
+<div class="form-group">
+<label>Tháng</label>
+<div id="budgetFormMonthLabel" style="padding:9px 0;font-weight:600;"></div>
+</div>
+<div class="form-group">
+<label for="budgetCategory">Danh mục</label>
+<select id="budgetCategory"></select>
+</div>
+<div class="form-group">
+<label for="budgetAmount">Số tiền ngân sách (VNĐ)</label>
+<input id="budgetAmount" type="number" placeholder="Ví dụ: 2000000">
+</div>
+</div>
+<button class="add-btn" type="submit" id="budgetSubmitBtn">+ Thêm</button>
+<button class="add-btn secondary" type="button" id="budgetCancelBtn">Hủy</button>
+<div class="message" id="budgetMessage"></div>
+</form>
+<div id="budgetSummary" style="margin-top:16px;"></div>
+<div id="budgetList" style="margin-top:8px;"><div class="empty">Chưa có ngân sách nào cho tháng này.</div></div>
 </section>
 
 
@@ -1415,12 +1468,350 @@ async function invDeleteInvestment(inv){
     await loadInvestments(session.user.id);
 }
 
+/* =========================
+   NGÂN SÁCH (Budget V1 — #15)
+   - Planning layer: Budget KHÔNG phải Account/Transaction/Transfer/Asset/Liability.
+   - Net Worth inclusion = 0: không chạm accounts/transactions (ghi)/net_worth_items/
+     net_worth_snapshots, không gọi RPC. allTransactions chỉ ĐỌC để tính Actual.
+   - DB đã LOCK: chỉ đọc/ghi budgets. Không schema change.
+   - Frontend Plan v1.1 🔒 LOCKED (2026-09-29).
+========================= */
+let budgetList=[];
+let budgetEditingId=null;
+
+function budgetYm(){
+    const el=document.getElementById("budgetMonth");
+    const v=el&&el.value;
+    return v||todayStr().slice(0,7);
+}
+function fmtMonthVi(ym){
+    const p=(ym||"").split("-");
+    return p.length===2?p[1]+"/"+p[0]:ym;
+}
+/* Actual theo (tháng, category): 1 lần reduce trên allTransactions.
+   P1: map theo category_id TRỰC TIẾP — parent row chỉ hiện actual trực tiếp
+   của chính nó, KHÔNG cộng descendants (tránh double-count). */
+function budgetActualMap(ym){
+    const map={};
+    (allTransactions||[]).forEach(t=>{
+        if(t.type!=="expense") return;              /* B: Actual chỉ đọc expense */
+        if(!t.transaction_date||t.transaction_date.slice(0,7)!==ym) return;
+        if(!t.category_id) return;                  /* transfer có category_id NULL */
+        map[t.category_id]=(map[t.category_id]||0)+Number(t.amount);
+    });
+    return map;
+}
+function isLeafCategory(id){
+    return !categoriesCache.some(c=>c.parent_id===id);
+}
+/* B-11: dropdown chỉ leaf expense categories */
+function budgetLeafExpenseOptions(){
+    return categoriesCache.filter(c=>c.type==="expense"&&isLeafCategory(c.id));
+}
+/* B-12 read-time: active khi category hiện tại vẫn là leaf expense */
+function isBudgetActive(b){
+    const c=b.category_id&&categoryById(b.category_id);
+    return !!c&&c.type==="expense"&&isLeafCategory(c.id);
+}
+function budgetNameOf(b){
+    return categoryLabel(b.category_id)||"—";
+}
+
+/* Map lỗi DB sang message thân thiện — không hiện raw PostgreSQL error (§7.1 plan).
+   So khớp chuỗi tiếng Việt có dấu đúng migration đã LOCK. */
+function mapBudgetDbError(err){
+    const m=(err&&err.message)||"";
+    if(m.indexOf("BUDGETS_CATEGORY: budget requires an expense category")>=0)
+        return "Chỉ được đặt ngân sách cho danh mục chi tiêu.";
+    if(m.indexOf("BUDGETS_CATEGORY: budget requires a leaf category")>=0)
+        return "Chỉ được đặt ngân sách cho danh mục con (không chứa danh mục khác bên trong).";
+    if(err&&err.code==="23505")
+        return "Đã có ngân sách cho danh mục này trong tháng "+fmtMonthVi(budgetYm())+". Hãy bấm Sửa thay vì thêm mới.";
+    if(m.indexOf("budgets_amount_non_negative")>=0)
+        return "Số tiền ngân sách không được âm.";
+    return "Có lỗi xảy ra, vui lòng thử lại.";
+}
+
+async function loadBudgets(){
+    const ym=budgetYm();
+    const listEl=document.getElementById("budgetList");
+    const session=await getSession();
+    if(!session){
+        if(listEl) listEl.innerHTML='<div class="empty">Phiên đăng nhập đã hết.</div>';
+        return;
+    }
+    const {data,error}=await supabaseClient
+        .from("budgets")
+        .select("*")
+        .eq("user_id",session.user.id)
+        .eq("month",ym+"-01")
+        .order("created_at",{ascending:true});
+    if(error){
+        console.error(error);
+        if(listEl) listEl.innerHTML='<div class="empty">Không thể tải ngân sách.</div>';
+        return;
+    }
+    budgetList=data||[];
+    dataLoadedFlags.budgets=true;
+    renderBudgets();
+}
+
+function renderBudgets(){
+    const ym=budgetYm();
+    const listEl=document.getElementById("budgetList");
+    const sumEl=document.getElementById("budgetSummary");
+    if(!listEl) return;
+    const actualMap=budgetActualMap(ym);
+    const budgetedIds={};
+    budgetList.forEach(b=>{ budgetedIds[b.category_id]=true; });
+
+    /* Budget rows: A→Z theo tên. Actual-only rows (P1): mọi category có expense
+       actual nhưng chưa budget — leaf hoặc parent, còn trong cache
+       (actual là historical fact, không lọc theo type hiện tại của category). */
+    const budgetRows=budgetList.slice().sort((a,b)=>
+        budgetNameOf(a).localeCompare(budgetNameOf(b),"vi"));
+    const actualOnlyIds=Object.keys(actualMap).filter(id=>
+        !budgetedIds[id]&&actualMap[id]>0&&categoryById(id));
+    actualOnlyIds.sort((a,b)=>actualMap[b]-actualMap[a]);
+
+    /* Tổng tháng — chỉ budget rows active (P2) */
+    let totalBudget=0,totalActual=0;
+    budgetList.forEach(b=>{
+        if(!isBudgetActive(b)) return;
+        totalBudget+=Number(b.amount);
+        totalActual+=actualMap[b.category_id]||0;
+    });
+
+    listEl.innerHTML="";
+    if(!budgetRows.length&&!actualOnlyIds.length){
+        const d=document.createElement("div");
+        d.className="empty";
+        d.textContent="Chưa có ngân sách nào cho tháng "+fmtMonthVi(ym)+".";
+        listEl.appendChild(d);
+    }else{
+        budgetRows.forEach(b=>listEl.appendChild(budgetCardEl(b,actualMap)));
+        actualOnlyIds.forEach(id=>listEl.appendChild(budgetActualOnlyEl(id,actualMap[id])));
+    }
+    if(sumEl) renderBudgetSummary(sumEl,ym,totalBudget,totalActual);
+}
+
+function budgetBadgeEl(kind,text){
+    const s=document.createElement("span");
+    s.className="budget-badge "+kind;
+    s.textContent=text;
+    return s;
+}
+
+function budgetCardEl(b,actualMap){
+    const active=isBudgetActive(b);
+    const amount=Number(b.amount);
+    const spent=active?(actualMap[b.category_id]||0):0;
+    const remaining=amount-spent;
+    let pct,pctLabel;
+    if(amount>0){ pct=spent/amount*100; pctLabel=(Math.round(pct*10)/10)+"%"; }
+    else if(spent>0){ pct=100; pctLabel="—"; }   /* B-EDGE-2 */
+    else { pct=0; pctLabel="0%"; }
+    const barW=Math.min(Math.max(pct,0),100);
+    const over=spent>amount;
+
+    const card=document.createElement("div");
+    card.className="budget-card"+(active?"":" inactive");
+
+    const head=document.createElement("div");
+    head.className="budget-card-head";
+    const name=document.createElement("div");
+    name.className="budget-card-name";
+    name.textContent=budgetNameOf(b);
+    head.appendChild(name);
+    if(!active) head.appendChild(budgetBadgeEl("inactive","Không hoạt động"));
+    else if(over) head.appendChild(budgetBadgeEl("over","Vượt "+formatMoney(spent-amount)));
+    else head.appendChild(budgetBadgeEl("ok",pctLabel+" đã dùng"));
+    card.appendChild(head);
+
+    const meta=document.createElement("div");
+    meta.className="budget-meta";
+    const l1=document.createElement("div");
+    l1.textContent="Ngân sách: "+formatMoney(amount)+" · Đã chi: "+
+        (active?formatMoney(spent):"—");
+    const l2=document.createElement("div");
+    l2.textContent="Còn lại: "+(active?
+        (remaining>=0?formatMoney(remaining):"Vượt "+formatMoney(-remaining)):"—");
+    meta.appendChild(l1); meta.appendChild(l2);
+    card.appendChild(meta);
+
+    if(active){
+        const prog=document.createElement("div");
+        prog.className="budget-progress";
+        const bar=document.createElement("div");
+        bar.className="budget-progress-bar"+(over?" over":"");
+        bar.style.width=barW+"%";
+        prog.appendChild(bar);
+        card.appendChild(prog);
+    }
+
+    const actions=document.createElement("div");
+    actions.className="budget-actions";
+    const editBtn=document.createElement("button");
+    editBtn.className="budget-btn"; editBtn.type="button"; editBtn.textContent="Sửa";
+    editBtn.addEventListener("click",()=>budgetOpenForm(b));
+    const delBtn=document.createElement("button");
+    delBtn.className="budget-btn danger"; delBtn.type="button"; delBtn.textContent="Xóa";
+    delBtn.addEventListener("click",()=>budgetDelete(b));
+    actions.appendChild(editBtn); actions.appendChild(delBtn);
+    card.appendChild(actions);
+
+    return card;
+}
+
+function budgetActualOnlyEl(id,actual){
+    const card=document.createElement("div");
+    card.className="budget-card";
+    const head=document.createElement("div");
+    head.className="budget-card-head";
+    const name=document.createElement("div");
+    name.className="budget-card-name";
+    name.textContent=categoryLabel(id)||"—";
+    head.appendChild(name);
+    head.appendChild(budgetBadgeEl("none","Chưa đặt ngân sách"));
+    card.appendChild(head);
+    const meta=document.createElement("div");
+    meta.className="budget-meta";
+    const l1=document.createElement("div");
+    l1.textContent="Ngân sách: — · Đã chi: "+formatMoney(actual);
+    meta.appendChild(l1);
+    card.appendChild(meta);
+    return card;
+}
+
+/* P2: % tổng tháng */
+function renderBudgetSummary(el,ym,totalBudget,totalActual){
+    let pctLabel;
+    if(totalBudget>0) pctLabel=(Math.round(totalActual/totalBudget*1000)/10)+"%";
+    else if(totalActual>0) pctLabel="—";
+    else pctLabel="0%";
+    const rem=totalBudget-totalActual;
+    el.innerHTML="";
+    const wrap=document.createElement("div");
+    wrap.className="budget-summary";
+    const items=[
+        ["Tổng ngân sách ("+fmtMonthVi(ym)+")",formatMoney(totalBudget)],
+        ["Tổng đã chi",formatMoney(totalActual)],
+        ["Còn lại",rem>=0?formatMoney(rem):"Vượt "+formatMoney(-rem)],
+        ["% đã dùng",pctLabel]
+    ];
+    items.forEach(it=>{
+        const d=document.createElement("div");
+        d.className="budget-summary-item";
+        d.textContent=it[0];
+        const b=document.createElement("b");
+        b.textContent=it[1];
+        d.appendChild(b);
+        wrap.appendChild(d);
+    });
+    el.appendChild(wrap);
+}
+
+function budgetOpenForm(b){
+    budgetEditingId=b?b.id:null;
+    const form=document.getElementById("budgetForm");
+    const catSel=document.getElementById("budgetCategory");
+    const amtInput=document.getElementById("budgetAmount");
+    document.getElementById("budgetFormMonthLabel").textContent="Tháng "+fmtMonthVi(budgetYm());
+    document.getElementById("budgetMessage").textContent="";
+    if(b){
+        /* D5: sửa chỉ được sửa amount — category disabled, không render field tháng */
+        catSel.innerHTML="";
+        const o=document.createElement("option");
+        o.value=b.category_id;
+        o.textContent=budgetNameOf(b);
+        catSel.appendChild(o);
+        catSel.value=b.category_id;
+        catSel.disabled=true;
+        amtInput.value=b.amount;
+        document.getElementById("budgetSubmitBtn").textContent="Lưu";
+    }else{
+        catSel.disabled=false;
+        catSel.innerHTML="";
+        const ph=document.createElement("option");
+        ph.value="";
+        ph.textContent="-- Chọn danh mục --";
+        catSel.appendChild(ph);
+        budgetLeafExpenseOptions().forEach(c=>{
+            const o=document.createElement("option");
+            o.value=c.id;
+            o.textContent=categoryLabel(c.id);
+            catSel.appendChild(o);
+        });
+        amtInput.value="";
+        document.getElementById("budgetSubmitBtn").textContent="+ Thêm";
+    }
+    form.style.display="block";
+}
+
+function budgetCloseForm(){
+    document.getElementById("budgetForm").style.display="none";
+    budgetEditingId=null;
+}
+
+async function budgetSubmit(e){
+    e.preventDefault();
+    const msg=document.getElementById("budgetMessage");
+    msg.textContent="";
+    const amount=Number(document.getElementById("budgetAmount").value);
+    if(!(amount>=0)){ msg.textContent="Số tiền ngân sách không được âm."; return; }
+    const session=await getSession();
+    if(!session){ msg.textContent="Phiên đăng nhập đã hết."; return; }
+    if(budgetEditingId){
+        /* D5: UPDATE amount only — category_id/month immutable (DB backstop) */
+        const {error}=await supabaseClient.from("budgets")
+            .update({amount:amount})
+            .eq("id",budgetEditingId)
+            .eq("user_id",session.user.id);
+        if(error){
+            console.error(error);
+            msg.textContent=mapBudgetDbError(error);
+            await loadBudgets();   /* reload state mới nhất sau DB reject */
+            return;
+        }
+    }else{
+        const catId=document.getElementById("budgetCategory").value;
+        if(!catId){ msg.textContent="Vui lòng chọn danh mục."; return; }
+        const {error}=await supabaseClient.from("budgets").insert({
+            user_id:session.user.id,
+            category_id:catId,
+            month:budgetYm()+"-01",
+            amount:amount
+        });
+        if(error){
+            console.error(error);
+            msg.textContent=mapBudgetDbError(error);
+            await loadBudgets();   /* reload state mới nhất sau DB reject */
+            return;
+        }
+    }
+    budgetCloseForm();
+    await loadBudgets();
+}
+
+async function budgetDelete(b){
+    const label=budgetNameOf(b);
+    if(!confirm("Xóa ngân sách \""+label+"\" tháng "+fmtMonthVi(budgetYm())+
+        " ("+formatMoney(Number(b.amount))+")?")) return;
+    const session=await getSession();
+    if(!session) return;
+    const {error}=await supabaseClient.from("budgets").delete()
+        .eq("id",b.id)
+        .eq("user_id",session.user.id);
+    if(error){ alert("Không thể xóa: "+mapBudgetDbError(error)); return; }
+    await loadBudgets();
+}
+
 /* ============ DATA EXPORT / BACKUP V1 ============
    Cờ "đã load" cho từng dataset — phục vụ quy tắc cứng (plan v1.1 §4.2):
    export/backup CHỈ dùng dữ liệu đã có trong application state,
    KHÔNG tạo query mới, KHÔNG auto-fetch thêm. Mỗi cờ được bật bằng
    đúng 1 dòng ở cuối hàm load hiện có — không đổi logic các hàm đó. */
-const dataLoadedFlags={accounts:false,transactions:false,categories:false,net_worth_items:false,goals:false,goal_contributions:false,investments:false,investment_lots:false,investment_prices:false};
+const dataLoadedFlags={accounts:false,transactions:false,categories:false,net_worth_items:false,goals:false,goal_contributions:false,investments:false,investment_lots:false,investment_prices:false,budgets:false};
 
 /* Full rows của goal_contributions. Query aggregate của Goals V1 chỉ lấy
    (goal_id,amount) nên không đủ fidelity cho backup (plan v1.1 Q1) —
@@ -1963,6 +2354,9 @@ async function loadDashboard(){
     await loadNetWorth(session.user.id);
     await loadGoals();
     await loadInvestments(session.user.id);
+    /* #15 BUDGET V1 — sau khi categories + transactions đã load (Actual cần cả hai) */
+    document.getElementById("budgetMonth").value=todayStr().slice(0,7);
+    await loadBudgets();
 
     /* #13 HISTORICAL NET WORTH (Frontend Plan v1.0 D4 — 🔒 LOCKED):
        Fetch chart SAU khi capture settle để điểm hôm nay luôn có mặt.
