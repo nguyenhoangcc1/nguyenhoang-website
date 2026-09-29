@@ -1806,6 +1806,12 @@ async function budgetDelete(b){
     await loadBudgets();
 }
 
+/* Wire-up UI Budget V1 — chạy 1 lần khi script load (DOM đã sẵn sàng) */
+document.getElementById("budgetAddBtn").addEventListener("click",()=>budgetOpenForm(null));
+document.getElementById("budgetCancelBtn").addEventListener("click",budgetCloseForm);
+document.getElementById("budgetForm").addEventListener("submit",budgetSubmit);
+document.getElementById("budgetMonth").addEventListener("change",loadBudgets);
+
 /* ============ DATA EXPORT / BACKUP V1 ============
    Cờ "đã load" cho từng dataset — phục vụ quy tắc cứng (plan v1.1 §4.2):
    export/backup CHỈ dùng dữ liệu đã có trong application state,
