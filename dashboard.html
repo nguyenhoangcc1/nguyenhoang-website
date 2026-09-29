@@ -1757,7 +1757,9 @@ async function budgetSubmit(e){
     e.preventDefault();
     const msg=document.getElementById("budgetMessage");
     msg.textContent="";
-    const amount=Number(document.getElementById("budgetAmount").value);
+    const amountRaw=document.getElementById("budgetAmount").value;
+    if(amountRaw===""||amountRaw==null){ msg.textContent="Vui lòng nhập số tiền ngân sách."; return; }
+    const amount=Number(amountRaw);
     if(!(amount>=0)){ msg.textContent="Số tiền ngân sách không được âm."; return; }
     const session=await getSession();
     if(!session){ msg.textContent="Phiên đăng nhập đã hết."; return; }
