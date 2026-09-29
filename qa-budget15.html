@@ -1565,13 +1565,14 @@ function renderBudgets(){
     const budgetedIds={};
     budgetList.forEach(b=>{ budgetedIds[b.category_id]=true; });
 
-    /* Budget rows: A→Z theo tên. Actual-only rows (P1): mọi category có expense
-       actual nhưng chưa budget — leaf hoặc parent, còn trong cache
-       (actual là historical fact, không lọc theo type hiện tại của category). */
+    /* Budget rows: A→Z theo tên. Actual-only rows (P1): mọi expense category
+       (type hiện tại) có actual nhưng chưa budget — leaf hoặc parent. */
     const budgetRows=budgetList.slice().sort((a,b)=>
         budgetNameOf(a).localeCompare(budgetNameOf(b),"vi"));
-    const actualOnlyIds=Object.keys(actualMap).filter(id=>
-        !budgetedIds[id]&&actualMap[id]>0&&categoryById(id));
+    const actualOnlyIds=Object.keys(actualMap).filter(id=>{
+        const c=categoryById(id);
+        return !budgetedIds[id]&&actualMap[id]>0&&c&&c.type==="expense";
+    });
     actualOnlyIds.sort((a,b)=>actualMap[b]-actualMap[a]);
 
     /* Tổng tháng — chỉ budget rows active (P2) */
@@ -1757,7 +1758,9 @@ async function budgetSubmit(e){
     e.preventDefault();
     const msg=document.getElementById("budgetMessage");
     msg.textContent="";
-    const amount=Number(document.getElementById("budgetAmount").value);
+    const amountRaw=document.getElementById("budgetAmount").value;
+    if(amountRaw===""||amountRaw==null){ msg.textContent="Vui lòng nhập số tiền ngân sách."; return; }
+    const amount=Number(amountRaw);
     if(!(amount>=0)){ msg.textContent="Số tiền ngân sách không được âm."; return; }
     const session=await getSession();
     if(!session){ msg.textContent="Phiên đăng nhập đã hết."; return; }
